@@ -280,11 +280,11 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
   let cursor = 153 + headerExtra;
   const line = (label, value) => { text(label, 18, cursor, 9, muted); text(value, 83, cursor, 9); cursor += 6; };
   line('Sollwert / Sollgrenzen', `${mm(p.target)}  /  ${mm(p.lower)} - ${mm(p.upper)}`);
-  line('Lernstand am Anfang', `${mm(initialLearning.lower)} - ${mm(initialLearning.upper)}  (Version ${initialLearning.version})`);
+  line('Auswertungsgrenzen zu Beginn', `${mm(initialLearning.lower)} - ${mm(initialLearning.upper)}  (Version ${initialLearning.version})`);
   if (finalLearning.version !== initialLearning.version) {
-    line('Lernstand am Ende', `${mm(finalLearning.lower)} - ${mm(finalLearning.upper)}  (Version ${finalLearning.version})`);
+    line('Auswertungsgrenzen am Ende', `${mm(finalLearning.lower)} - ${mm(finalLearning.upper)}  (Version ${finalLearning.version})`);
   }
-  line('Profil-Messrate / Einheit', `${p.rate} Hz / ${p.unit ?? 'mm'}`);
+  line('Profilrate / Einheit', `${p.rate} Hz / ${p.unit ?? 'mm'}`);
   if (recording.zeroOffset) line('Anzeige-Nullpunkt', `${mm(recording.zeroOffset)} (Bericht mit Absolutwerten)`);
   line('Minimum / Maximum', `${mm(summary.min)} / ${mm(summary.max)}`);
   line('Mittelwert / Spannweite', `${mm(summary.mean)} / ${mm(summary.span)}`);
@@ -309,7 +309,7 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
   };
   section('Notizen');
   const markers = (recording.markers ?? []).filter(item => item.t >= start && item.t <= end);
-  markers.length ? markers.forEach(item => paragraph(`${formatDuration(item.t)} - ${item.note}`)) : paragraph('Keine Ereignisse im gewählten Zeitraum.', muted);
+  markers.length ? markers.forEach(item => paragraph(`${formatDuration(item.t)} - ${item.note}`)) : paragraph('Keine Notizen in diesem Zeitraum.', muted);
   section('Bewertungen');
   const feedback = (recording.feedback ?? []).filter(item => item.t >= start && item.t <= end);
   feedback.length ? feedback.forEach(item => paragraph(`${formatDuration(item.t)} - ${mm(item.value)} - ${item.accepted ? 'Akzeptabel' : 'Nicht akzeptabel'}${item.note ? ': ' + item.note : ''}`)) : paragraph('Keine Bewertungen im gewählten Zeitraum.', muted);
