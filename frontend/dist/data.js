@@ -1,6 +1,7 @@
 export const SENSOR = Object.freeze({
-  model: 'optoNCDT 1420-25', rangeStart: 25, rangeEnd: 50, range: 25,
-  rates: [250, 500, 1000, 2000, 4000, 8000], interface: 'RS422 · IF2001/USB',
+  model: 'optoNCDT 1900-10', rangeStart: 20, rangeEnd: 30, range: 10, midpoint: 25,
+  rates: [250, 500, 1000, 2000, 4000, 8000, 10000], interface: 'RS422 · IF2001/USB',
+  manual: 'https://www.micro-epsilon.de/fileadmin/download/manuals/man--optoNCDT-1900--de.pdf',
 });
 
 const STORAGE_KEY = 'micro-epsilon-monitor-v1';
@@ -10,13 +11,49 @@ const clone = value => structuredClone(value);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const round = value => Math.round(value * 1e6) / 1e6;
 
+const sensorCode = text => typeof text === 'string' ? text.replace(/[^a-z0-9]/gi, '').toLowerCase() : '';
+const exactModel = model => ['ild190010', 'optoncdt190010', '190010'].includes(sensorCode(model));
+const ledColors = new Set(['green', 'yellow', 'red', 'off', 'unknown']);
+const ledColor = color => ledColors.has(color) ? color : 'unknown';
+
+export function matchesBackendSensor(status) {
+  const info = status?.info;
+  return Boolean(info && status.source !== 'replay' &&
+    (exactModel(info.model) || sensorCode(info.model) === 'ild1900') &&
+    info.range_mm === SENSOR.range && info.smr_mm === SENSOR.rangeStart && info.unit === 'mm');
+}
+
+export function parseBridgeSample(payload, verifiedSensor = false) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const native = Object.hasOwn(payload, 'dist_from_face_mm');
+  const model = payload.sensor;
+  if (!native && payload.unit !== 'mm') return null;
+  if (native && payload.status !== 'streaming') return null;
+  if (model != null && !exactModel(model) && !(native && verifiedSensor && sensorCode(model) === 'ild1900')) {
+    return { error: 'model' };
+  }
+  if (native && !verifiedSensor && !exactModel(model)) return { error: 'unverified' };
+
+  const value = native ? payload.dist_from_face_mm : payload.value;
+  const led = {
+    state: ledColor(native ? (payload.state ?? payload.state_flags?.led) : payload.state),
+    output: ledColor(payload.output),
+  };
+  if (native && (value === null || payload.n === 0 || led.state === 'red' || led.state === 'off')) {
+    return { error: 'signal' };
+  }
+  if (!finite(value) || (native && (!Number.isInteger(payload.n) || payload.n < 1))) return null;
+  if (value < SENSOR.rangeStart || value > SENSOR.rangeEnd) return { error: 'range' };
+  return { value, led };
+}
+
 export function formatDuration(seconds) {
   const s = Math.max(0, Math.floor(Number(seconds) || 0));
   const minutes = Math.floor(s / 60);
   return `${String(minutes).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function makeDemoPoints(duration = 60, offset = 0, phase = 0, target = 37.5) {
+export function makeDemoPoints(duration = 60, offset = 0, phase = 0, target = SENSOR.midpoint) {
   const count = Math.max(0, Math.floor(duration * DISPLAY_RATE));
   return Array.from({ length: count + 1 }, (_, i) => {
     const t = i / DISPLAY_RATE;
@@ -35,9 +72,9 @@ function makeProfile(id, name, description, target, tolerance, rate) {
 
 export function createInitialState() {
   const profiles = [
-    makeProfile('distance', 'Abstand prüfen', 'Abstand zu einer Oberfläche überwachen.', 37.5, 0.05, 2000),
-    makeProfile('runout', 'Rundlauf beobachten', 'Kleine Bewegungen und Schwankungen vergleichen.', 37.5, 0.1, 4000),
-    makeProfile('position', 'Position kontrollieren', 'Wiederkehrende Bauteilpositionen prüfen.', 38, 0.15, 1000),
+    makeProfile('distance', 'Abstand prüfen', 'Abstand zu einer Oberfläche überwachen.', SENSOR.midpoint, 0.05, 4000),
+    makeProfile('runout', 'Rundlauf beobachten', 'Kleine Bewegungen und Schwankungen vergleichen.', SENSOR.midpoint, 0.1, 4000),
+    makeProfile('position', 'Position kontrollieren', 'Wiederkehrende Bauteilpositionen prüfen.', SENSOR.midpoint + 0.5, 0.15, 1000),
   ];
   const now = Date.now();
   const recordings = [
@@ -50,14 +87,14 @@ export function createInitialState() {
   ].map((seed, index) => {
     const profile = clone(profiles[seed.profileIndex ?? 0]);
     return {
-      id: `demo-run-${index + 1}`, name: seed.name, createdAt: new Date(now - seed.ago).toISOString(),
+      id: `demo-1900-run-${index + 1}`, name: seed.name, createdAt: new Date(now - seed.ago).toISOString(),
       duration: seed.duration, source: 'demo', sensor: SENSOR.model, profile,
       points: makeDemoPoints(seed.duration, seed.offset, seed.phase, profile.target), markers: seed.markers,
       feedback: [], parameterHistory: [], storage: 'Browser · lokal', displayRate: DISPLAY_RATE,
     };
   });
-  return { profiles, activeProfileId: profiles[0].id, recordings,
-    settings: { rate: 2000, averaging: 4, output: 'rs422' }, setupComplete: false };
+  return { sensorModel: SENSOR.model, profiles, activeProfileId: profiles[0].id, recordings,
+    settings: { rate: profiles[0].rate, averaging: 9, output: 'rs422' }, setupComplete: false };
 }
 
 export function loadState() {
@@ -67,7 +104,18 @@ export function loadState() {
     const state = JSON.parse(raw);
     if (!Array.isArray(state.profiles) || !state.profiles.length || !Array.isArray(state.recordings) ||
         !state.profiles.some(profile => profile.id === state.activeProfileId)) throw new Error('invalid state');
-    return state;
+    if (state.sensorModel === SENSOR.model) return state;
+
+    // Keep archived measurements on their original absolute scale.
+    const next = createInitialState();
+    const bridgeUrl = state.settings?.bridgeUrl;
+    return {
+      ...state,
+      ...next,
+      legacyProfiles: state.legacyProfiles ?? state.profiles,
+      recordings: [...next.recordings, ...state.recordings],
+      settings: { ...next.settings, ...(bridgeUrl ? { bridgeUrl } : {}) },
+    };
   } catch {
     throw new Error('Die lokalen Daten konnten nicht gelesen werden. Prüfe die Browser-Speichereinstellungen.');
   }

@@ -324,6 +324,7 @@ dialog::backdrop { background: var(--scrim); backdrop-filter: none; }
   .sensor-card .sensor-mini { grid-row: 1 / span 2; margin: 0; height: 118px; }
   .sensor-card .device-leds { margin: 0; flex-wrap: wrap; gap: 4px; }
   .sensor-card .device-bottom { padding-top: 5px; }
+  .sensor-card .metric-row { display: flex; grid-column: 1 / -1; }
   .learning-card .demo-controls { display: flex; }
   .run-name { font-size: 13px; }
 }

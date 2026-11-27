@@ -1,6 +1,8 @@
 # Micro-Epsilon · Sensor Monitor
 
-Browser-Messplatz für den optoNCDT 1420-25. Im Messplatz kannst du Abstände verfolgen und Aufnahmen mit Zeitmarken versehen. Unter **Aufzeichnungen** lassen sich Messungen wiedergeben, vergleichen und als CSV oder PDF exportieren.
+Browser-Messplatz für den optoNCDT 1900-10. Der Sensor erfasst Abstände von 20 bis 30 mm ab Sensorfront. Laufende Messungen lassen sich mit Zeitmarken aufzeichnen, vergleichen und als CSV oder PDF exportieren.
+
+Das interaktive 3D-Modell orientiert sich an Maßzeichnung und Bedienfeld der Betriebsanleitung. Die Montagebohrungen, Optik, Kabeldurchführung und LEDs sind am Modell dargestellt. Das Kabel ist für die Bildschirmansicht gekürzt. Beim Klick auf eine LED erscheint ihre Bedeutung. [Betriebsanleitung, S. 18–19, 31 und 33](https://www.micro-epsilon.de/fileadmin/download/manuals/man--optoNCDT-1900--de.pdf)
 
 ## Starten
 
@@ -10,29 +12,31 @@ Im Projektordner mit Python 3:
 python3 -m http.server 4173 --directory dist --bind 127.0.0.1
 ```
 
-Öffne anschließend http://127.0.0.1:4173/. HTML, CSS, JavaScript, Schriften und Bibliotheken liegen in `dist/`. Du kannst diesen Ordner direkt mit einem statischen Webserver bereitstellen.
+Öffne anschließend http://127.0.0.1:4173/. HTML, CSS, JavaScript, Schriften und Bibliotheken liegen in `dist/`. Der Ordner kann direkt mit einem statischen Webserver bereitgestellt werden.
 
 ## Datenquelle
 
-Die Demo zeigt fünf simulierte Werte pro Sekunde. Die Profilrate beschreibt die vorgesehene Sensoreinstellung. Akzeptierte Abweichungen können die Auswertungsgrenzen erweitern. Messwerte und Sollgrenzen bleiben dabei erhalten.
+Die Demo zeigt fünf simulierte Werte pro Sekunde. Die Profilrate beschreibt die vorgesehene Sensoreinstellung. Der Sensor bietet sieben feste Messraten von 250 Hz bis 10 kHz. Aufzeichnungen und Profile liegen im Browser.
 
-Für echte Messwerte braucht der Browser eine Messbrücke, die den Sensor ausliest. Unter **Einstellungen** kannst du die WebSocket-Adresse eintragen, zum Beispiel `ws://localhost:8765`. Bei einer per HTTPS geöffneten Seite kann eine WSS-Verbindung nötig sein.
+### Messbrücke
 
-Die Messbrücke sendet Nachrichten in diesem Format:
+Unter **Einstellungen** gibst du die WebSocket-Adresse der Messbrücke ein, beispielsweise `ws://localhost:8765`. Bei einer per HTTPS geöffneten Seite kann WSS nötig sein.
+
+Die Messbrücke sendet den absoluten Abstand ab Sensorfront:
 
 ```json
 {
-  "value": 37.501,
+  "value": 25.001,
   "unit": "mm",
-  "sensor": "optoNCDT 1420-25",
+  "sensor": "optoNCDT 1900-10",
   "state": "green",
   "output": "green"
 }
 ```
 
-`value` ist eine endliche Zahl zwischen 25 und 50 mm. Falls die Nachricht `sensor` enthält, prüft die Anwendung das Modell. Die LED-Felder akzeptieren `green`, `yellow`, `red`, `off` und `unknown`. Die 3D-Ansicht zeigt ein Schema des Sensors. Die Bedeutung der LEDs steht im [Sensorhandbuch](https://www.micro-epsilon.com/fileadmin/download/manuals/man--optoNCDT-1420--en.pdf).
+`value` liegt im Bereich 20–30 mm. Die optionalen LED-Felder verstehen `green`, `yellow`, `red`, `off` und `unknown`.
 
-Aufzeichnungen und Profile liegen im Browser. Exportiere wichtige Aufnahmen als Datei, bevor du die Browserdaten löschst.
+Das Projekt-Backend kann über `ws://localhost:8000/ws/stream` angebunden werden, wenn der Browser auch dessen `/api/status` lesen kann. Dort prüft der Monitor Modell und Messbereich. Verwende bei einem lokalen Aufbau denselben Ursprung oder einen dafür konfigurierten Proxy. Der Monitor liest `dist_from_face_mm`, also den Abstand ab Sensorfront ohne Nullpunktverschiebung.
 
 ## Tests
 
@@ -42,4 +46,4 @@ Mit Node.js ab Version 20:
 npm test
 ```
 
-Die Tests decken Messbereich, Auswertungsgrenzen, Browser-Speicherung und CSV-/PDF-Export ab.
+Die Tests decken Sensorbereich, Übernahme vorhandener Aufzeichnungen, Datenformate der Messbrücke, Auswertungsgrenzen und CSV-/PDF-Export ab.

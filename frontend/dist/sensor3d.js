@@ -13,14 +13,14 @@ const LED_MEANINGS = {
   state: {
     green: 'Objekt im Messbereich',
     yellow: 'Objekt in der Messbereichsmitte',
-    red: 'Messfehler oder Objekt außerhalb des Messbereichs',
+    red: 'Kein Abstandswert, etwa außerhalb des Messbereichs oder bei schwacher Reflexion',
     off: 'Laser ausgeschaltet',
     unknown: 'Status nicht verfügbar',
   },
   output: {
     green: 'Digitale Messwertausgabe über RS422',
-    yellow: 'Messwertausgänge deaktiviert',
-    red: 'Analoge Messwertausgabe über 4–20 mA',
+    yellow: 'Schaltausgänge aktiv',
+    red: 'Analogausgang für Strom oder Spannung aktiv',
     off: 'Sensor ohne Versorgung',
     unknown: 'Status nicht verfügbar',
   },
@@ -76,7 +76,7 @@ function makeFallback(container, onSelect, initialState) {
 }
 
 /**
- * Interactive schematic of the optoNCDT 1420. This is intentionally not a
+ * Interactive schematic based on pages 31 and 33 of the optoNCDT 1900 manual. This is intentionally not a
  * manufacturer CAD model. Hardware LED meaning is independent of tolerance.
  */
 export function createSensorViewer(container, { onSelect, initialState = {} } = {}) {
@@ -99,15 +99,15 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;outline-offset:-4px';
   canvas.tabIndex = 0;
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', 'Schematisches 3D-Modell des optoNCDT 1420. Zum Drehen ziehen oder Pfeiltasten verwenden. Plus und Minus zum Zoomen, Pos1 für die Ausgangsansicht.');
+  canvas.setAttribute('aria-label', 'Schematisches 3D-Modell des optoNCDT 1900-10. Zum Drehen ziehen oder Pfeiltasten verwenden. Plus und Minus zum Zoomen, Pos1 für die Ausgangsansicht.');
   container.append(canvas);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50);
-  const initialCamera = new THREE.Vector3(4.1, 2.7, 6.4);
+  const initialCamera = new THREE.Vector3(2.85, 2.70, 5.65);
   camera.position.copy(initialCamera);
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, 0.15, 0);
+  controls.target.set(0, 0.25, 0);
   controls.enableDamping = false;
   controls.enablePan = false;
   controls.minDistance = 3.8;
@@ -131,73 +131,120 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   scene.add(rimLight);
 
   const sensor = new THREE.Group();
-  sensor.rotation.y = -0.12;
   scene.add(sensor);
 
   const textures = [];
-  const metal = new THREE.MeshStandardMaterial({ color: 0x9c999b, metalness: 0.62, roughness: 0.38 });
-  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x45404a, metalness: 0.65, roughness: 0.35 });
-  const black = new THREE.MeshStandardMaterial({ color: 0x211c27, metalness: 0.18, roughness: 0.58 });
-  const screwMetal = new THREE.MeshStandardMaterial({ color: 0xc1cad0, metalness: 0.8, roughness: 0.3 });
-  const lens = new THREE.MeshStandardMaterial({ color: 0x0f2539, metalness: 0.7, roughness: 0.15 });
+  const aluminum = new THREE.MeshStandardMaterial({ color: 0xb4b6b8, metalness: 0.28, roughness: 0.4 });
+  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x35383d, metalness: 0.31, roughness: 0.42 });
+  const consoleMaterial = new THREE.MeshStandardMaterial({ color: 0x202329, metalness: 0.15, roughness: 0.43 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x101217, roughness: 0.68 });
+  const screwMetal = new THREE.MeshStandardMaterial({ color: 0x8b9196, metalness: 0.55, roughness: 0.36 });
+  const redInsert = new THREE.MeshStandardMaterial({ color: 0xb9232c, metalness: 0.13, roughness: 0.39 });
+  const lens = new THREE.MeshPhysicalMaterial({ color: 0x334866, metalness: 0.45, roughness: 0.18, clearcoat: 0.85 });
 
-  const addMesh = (geometry, material, position, parent = sensor) => {
+  const addMesh = (geometry, material, position) => {
     const mesh = new THREE.Mesh(geometry, material);
     if (position) mesh.position.set(...position);
-    parent.add(mesh);
+    sensor.add(mesh);
     return mesh;
   };
 
-  const bodyShape = new THREE.Shape();
-  const w = 1.65, h = 2.08, r = 0.075;
-  bodyShape.moveTo(-w / 2 + r, -h / 2);
-  bodyShape.lineTo(w / 2 - r, -h / 2);
-  bodyShape.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
-  bodyShape.lineTo(w / 2, h / 2 - r);
-  bodyShape.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
-  bodyShape.lineTo(-w / 2 + r, h / 2);
-  bodyShape.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
-  bodyShape.lineTo(-w / 2, -h / 2 + r);
-  bodyShape.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
-  const bodyGeometry = new THREE.ExtrudeGeometry(bodyShape, { depth: 0.8, bevelEnabled: true, bevelThickness: 0.045, bevelSize: 0.045, bevelSegments: 3, curveSegments: 6 });
-  bodyGeometry.translate(0, 0, -0.4);
-  addMesh(bodyGeometry, metal);
-
-  // A dark optical face, separate emitter and receiver, and two mounting points.
-  addMesh(new THREE.BoxGeometry(1.21, 0.97, 0.052), black, [0, -0.32, 0.467]);
-  addMesh(new THREE.BoxGeometry(0.4, 0.36, 0.024), darkMetal, [0.27, -0.38, 0.506]);
-  addMesh(new THREE.BoxGeometry(0.30, 0.25, 0.028), lens, [0.27, -0.38, 0.525]);
-  const glassGlint = new THREE.MeshBasicMaterial({ color: 0xa5baca, transparent: true, opacity: 0.22 });
-  const glint = addMesh(new THREE.PlaneGeometry(0.23, 0.025), glassGlint, [0.27, -0.32, 0.542]);
-  glint.rotation.z = -0.42;
-
-  const emitterHousing = addMesh(new THREE.CylinderGeometry(0.125, 0.125, 0.04, 32), darkMetal, [-0.27, -0.4, 0.51]);
-  emitterHousing.rotation.x = Math.PI / 2;
-  const laserMaterial = new THREE.MeshStandardMaterial({ color: 0x8a2333, emissive: 0xc62941, emissiveIntensity: 0.3, roughness: 0.25, metalness: 0.1 });
-  const laser = addMesh(new THREE.CylinderGeometry(0.065, 0.065, 0.045, 24), laserMaterial, [-0.27, -0.4, 0.54]);
-  laser.rotation.x = Math.PI / 2;
-
-  for (const [x, y] of [[-0.64, 0.83], [0.64, -0.83]]) {
-    const ring = addMesh(new THREE.CylinderGeometry(0.087, 0.087, 0.025, 24), screwMetal, [x, y, 0.464]);
-    ring.rotation.x = Math.PI / 2;
-    const hole = addMesh(new THREE.CylinderGeometry(0.047, 0.047, 0.035, 6), black, [x, y, 0.48]);
-    hole.rotation.x = Math.PI / 2;
+  function prism(shape, depth, material) {
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 14 });
+    geometry.translate(0, 0, -depth / 2);
+    return addMesh(geometry, material);
   }
 
-  // Cable and connector are schematic; neither is reported as a connected adapter.
-  addMesh(new THREE.CylinderGeometry(0.155, 0.155, 0.26, 24), darkMetal, [0.32, 1.16, -0.04]);
-  addMesh(new THREE.CylinderGeometry(0.125, 0.125, 0.15, 24), screwMetal, [0.32, 1.36, -0.04]);
-  for (let i = 0; i < 4; i++) {
-    const ring = addMesh(new THREE.TorusGeometry(0.14, 0.012, 8, 24), screwMetal, [0.32, 1.08 + i * 0.055, -0.04]);
-    ring.rotation.x = Math.PI / 2;
+  function outline(points) {
+    const shape = new THREE.Shape();
+    shape.moveTo(...points[0]);
+    for (const point of points.slice(1)) shape.lineTo(...point);
+    shape.closePath();
+    return shape;
+  }
+
+  // 25 mm per scene unit. ILD1900 housing 70 × 45 × 31 mm, mounting rail 32 mm deep.
+  // Housing and cap share the slightly sloped seam visible in the manual's side view.
+  const body = outline([
+    [-1.40, -0.57], [1.40, -0.57], [1.40, 0.72], [-1.40, 0.81],
+  ]);
+  prism(body, 1.24, aluminum);
+
+  const cap = new THREE.Shape();
+  cap.moveTo(-1.40, 0.81);
+  cap.quadraticCurveTo(-1.40, 0.90, -1.31, 0.90);
+  cap.lineTo(1.31, 0.90);
+  cap.quadraticCurveTo(1.40, 0.90, 1.40, 0.81);
+  cap.lineTo(1.40, 0.72);
+  cap.closePath();
+  prism(cap, 1.24, consoleMaterial);
+
+  const rail = outline([
+    [-1.40, -0.57], [-1.40, -0.83], [-1.33, -0.90], [1.33, -0.90],
+    [1.40, -0.83], [1.40, -0.57],
+  ]);
+  for (const x of [-1.20, 1.20]) {
+    const bore = new THREE.Path();
+    bore.absarc(x, -0.74, 0.069, 0, 2 * Math.PI, true);
+    rail.holes.push(bore);
+  }
+  prism(rail, 1.28, darkMetal);
+
+  // Raised locating pads and through-bores spaced 60 mm apart, on both faces.
+  for (const x of [-1.20, 1.20]) {
+    const lining = addMesh(new THREE.CylinderGeometry(0.068, 0.068, 1.299, 28, 1, true), black, [x, -0.74, 0]);
+    lining.rotation.x = Math.PI / 2;
+    for (const side of [-1, 1]) {
+      const pad = addMesh(new THREE.RingGeometry(0.068, 0.116, 32), screwMetal, [x, -0.74, side * 0.648]);
+      if (side < 0) pad.rotation.y = Math.PI;
+      const counterbore = addMesh(new THREE.RingGeometry(0.069, 0.086, 32), consoleMaterial, [x, -0.74, side * 0.650]);
+      if (side < 0) counterbore.rotation.y = Math.PI;
+    }
+  }
+
+  // Dark gasket along each return of the side panels.
+  for (const x of [-1.401, 1.401]) {
+    for (const z of [-0.43, 0.43]) {
+      addMesh(new THREE.BoxGeometry(0.014, 1.34, 0.021), darkMetal, [x, 0.10, z]);
+    }
+  }
+
+  // Optical openings point down, with separate emitter and receiver on the underside.
+  addMesh(new THREE.BoxGeometry(2.12, 0.022, 0.77), consoleMaterial, [0, -0.901, 0.01]);
+  addMesh(new THREE.BoxGeometry(0.51, 0.014, 0.39), black, [-0.31, -0.915, 0.07]);
+  addMesh(new THREE.BoxGeometry(0.39, 0.013, 0.29), lens, [-0.31, -0.924, 0.07]);
+  const glassGlint = new THREE.MeshBasicMaterial({ color: 0x91adcc, transparent: true, opacity: 0.45 });
+  addMesh(new THREE.BoxGeometry(0.29, 0.001, 0.025), glassGlint, [-0.31, -0.931, 0.14]);
+  addMesh(new THREE.CylinderGeometry(0.115, 0.115, 0.032, 32), black, [0.96, -0.917, 0.085]);
+  const laserMaterial = new THREE.MeshStandardMaterial({ color: 0x8a2333, emissive: 0xc62941, roughness: 0.27 });
+  addMesh(new THREE.CylinderGeometry(0.059, 0.059, 0.013, 24), laserMaterial, [0.96, -0.940, 0.085]);
+
+  // Top plate with molded red cable seat, four fasteners and a shortened cable.
+  const cableX = 0.48;
+  addMesh(new THREE.BoxGeometry(1.02, 0.023, 0.81), redInsert, [0.57, 0.908, 0]);
+  addMesh(new THREE.CylinderGeometry(0.140, 0.174, 0.055, 28), redInsert, [cableX, 0.939, 0]);
+  addMesh(new THREE.CylinderGeometry(0.083, 0.103, 0.134, 24), black, [cableX, 0.980, 0]);
+  for (const x of [-1.12, 1.16]) {
+    for (const z of [-0.441, 0.441]) {
+      addMesh(new THREE.CylinderGeometry(0.053, 0.053, 0.014, 24), screwMetal, [x, 0.906, z]);
+      addMesh(new THREE.BoxGeometry(0.055, 0.006, 0.010), black, [x, 0.914, z]);
+    }
   }
   const cablePath = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.32, 1.43, -0.04),
-    new THREE.Vector3(0.34, 1.72, -0.08),
-    new THREE.Vector3(0.68, 1.91, -0.17),
-    new THREE.Vector3(1.12, 1.91, -0.38),
+    new THREE.Vector3(cableX, 0.981, 0),
+    new THREE.Vector3(cableX, 1.20, -0.01),
+    new THREE.Vector3(0.61, 1.43, -0.15),
+    new THREE.Vector3(0.88, 1.54, -0.34),
+    new THREE.Vector3(1.26, 1.59, -0.46),
   ]);
-  addMesh(new THREE.TubeGeometry(cablePath, 30, 0.065, 12, false), black);
+  addMesh(new THREE.TubeGeometry(cablePath, 30, 0.067, 14, false), black);
+  const cableEnd = addMesh(new THREE.CircleGeometry(0.067, 14), black, [1.26, 1.59, -0.46]);
+  cableEnd.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), cablePath.getTangent(1).normalize());
+
+  for (const x of [-0.69, -1.05]) {
+    addMesh(new THREE.CylinderGeometry(0.135, 0.135, 0.012, 32), black, [x, 0.904, 0]);
+    addMesh(new THREE.CylinderGeometry(0.101, 0.101, 0.015, 32), darkMetal, [x, 0.912, 0]);
+  }
 
   function addLabel(text, width, height, position, { color = '#222c35', background = null, fontSize = 35, weight = 500 } = {}) {
     const labelCanvas = document.createElement('canvas');
@@ -216,28 +263,40 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
     return addMesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.FrontSide }), position);
   }
 
-  addLabel('MICRO-EPSILON', 1.0, 0.17, [0.04, 0.81, 0.467], { color: '#d62037', fontSize: 86, weight: 700 });
-  addLabel('optoNCDT 1420', 0.96, 0.15, [0.0, 0.61, 0.468], { fontSize: 58, weight: 600 });
-  addLabel('LASER DISPLACEMENT', 0.94, 0.09, [0, -0.89, 0.469], { fontSize: 38, color: '#333e48' });
+  for (const side of [-1, 1]) {
+    const brand = addLabel('MICRO-EPSILON', 1.03, 0.13, [-0.70 * side, 0.22, 0.622 * side], { fontSize: 88, weight: 700 });
+    const name = addLabel('optoNCDT', 1.13, 0.20, [0.56 * side, 0.22, 0.623 * side], { fontSize: 128, weight: 700 });
+    const id = addLabel('ILD1900-10', 0.94, 0.15, [0.54 * side, -0.02, 0.624 * side], { color: '#851c31', fontSize: 91, weight: 700 });
+    if (side < 0) {
+      for (const label of [brand, name, id]) label.rotation.y = Math.PI;
+    }
+  }
+  const warning = addLabel('✴', 0.29, 0.29, [1.405, 0.17, 0], { color: '#211e16', background: '#e3bd4e', fontSize: 450, weight: 700 });
+  warning.rotation.y = Math.PI / 2;
+
+  function consoleLabel(text, x, z, width = 0.32) {
+    const label = addLabel(text, width, 0.11, [x, 0.904, z], { color: '#d2d5d8', fontSize: 104, weight: 700 });
+    label.rotation.x = -Math.PI / 2;
+  }
+  consoleLabel('FUNCTION', -0.69, 0.24, 0.39);
+  consoleLabel('SELECT', -1.05, 0.24);
 
   const ledMeshes = {};
   const ledButtons = {};
   const currentStatus = { state: 'unknown', output: 'unknown' };
-  for (const [index, name] of ['state', 'output'].entries()) {
-    const x = index === 0 ? -0.27 : 0.27;
-    const bezel = addMesh(new THREE.CylinderGeometry(0.079, 0.079, 0.025, 24), darkMetal, [x, 0.30, 0.474]);
-    bezel.rotation.x = Math.PI / 2;
-    const ledMaterial = new THREE.MeshStandardMaterial({ color: LED_COLORS.unknown, emissive: LED_COLORS.unknown, emissiveIntensity: 0.2, roughness: 0.22, metalness: 0 });
-    const mesh = addMesh(new THREE.SphereGeometry(0.057, 20, 12), ledMaterial, [x, 0.30, 0.496]);
-    mesh.scale.z = 0.45;
+  for (const [name, x] of [['state', -0.05], ['output', -0.35]]) {
+    addMesh(new THREE.CylinderGeometry(0.072, 0.072, 0.017, 24), black, [x, 0.902, 0]);
+    const material = new THREE.MeshStandardMaterial({ color: LED_COLORS.unknown, emissive: LED_COLORS.unknown, emissiveIntensity: 0.2, roughness: 0.22 });
+    const mesh = addMesh(new THREE.SphereGeometry(0.046, 20, 12), material, [x, 0.913, 0]);
+    mesh.scale.y = 0.5;
     mesh.userData.ledName = name;
     ledMeshes[name] = mesh;
-    addLabel(name === 'state' ? 'STATE' : 'OUTPUT', 0.36, 0.09, [x, 0.13, 0.47], { fontSize: 57, weight: 500 });
+    consoleLabel(name.toUpperCase(), x, 0.24);
 
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'sensor3d-led-hotspot';
-    button.style.cssText = 'position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border:1px solid transparent;border-radius:50%;background:transparent;cursor:pointer;padding:0;z-index:1';
+    button.style.cssText = 'position:absolute;transform:translate(-50%, -50%);border:1px solid transparent;border-radius:50%;background:transparent;cursor:pointer;padding:0;z-index:1';
     button.addEventListener('focus', () => { button.style.borderColor = 'var(--accent)'; });
     button.addEventListener('blur', () => { button.style.borderColor = 'transparent'; });
     button.addEventListener('click', event => { event.stopPropagation(); onSelect?.(name); });
@@ -254,17 +313,30 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
     renderer.render(scene, camera);
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
-    for (const name of ['state', 'output']) {
+    sensor.getWorldQuaternion(quaternion);
+    normal.set(0, 1, 0).applyQuaternion(quaternion);
+    const hotspots = Object.keys(ledMeshes).map(name => {
       ledMeshes[name].getWorldPosition(position);
-      sensor.getWorldQuaternion(quaternion);
-      normal.set(0, 0, 1).applyQuaternion(quaternion);
       direction.copy(camera.position).sub(position);
-      const frontVisible = normal.dot(direction) > 0;
+      const controlsVisible = normal.dot(direction) > 0;
       position.project(camera);
-      const button = ledButtons[name];
-      button.style.left = `${(position.x * 0.5 + 0.5) * width}px`;
-      button.style.top = `${(-position.y * 0.5 + 0.5) * height}px`;
-      button.style.visibility = frontVisible && position.z < 1 ? 'visible' : 'hidden';
+      return {
+        button: ledButtons[name],
+        x: (position.x * 0.5 + 0.5) * width,
+        y: (-position.y * 0.5 + 0.5) * height,
+        visible: controlsVisible && position.z < 1 && Math.abs(position.x) <= 1 && Math.abs(position.y) <= 1,
+      };
+    });
+    const [state, output] = hotspots;
+    const distance = Math.hypot(state.x - output.x, state.y - output.y);
+    // Keep both projected controls independently clickable even when the view is small.
+    // The corresponding full-size buttons remain available outside the model.
+    const size = Math.min(34, state.visible && output.visible ? distance - 2 : 34);
+    for (const { button, x, y, visible } of hotspots) {
+      button.style.left = `${x}px`;
+      button.style.top = `${y}px`;
+      button.style.width = button.style.height = `${Math.max(1, size)}px`;
+      button.style.visibility = visible && size >= 5 ? 'visible' : 'hidden';
     }
   }
 
