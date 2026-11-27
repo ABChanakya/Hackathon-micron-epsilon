@@ -1,122 +1,147 @@
 # Sensor backend API
 
-Base URL: `http://localhost:8000` (run `uvicorn app:app --port 8000` in `backend/`).
-The backend also serves the UI from `backend/static/`, so the UI and the API share one origin (no CORS).
-All bodies are JSON. Errors from the sensor come back as HTTP 400 `{"detail": "<message>"}`.
+Base URL: `http://localhost:8000`. Run `uvicorn app:app --port 8000` in `backend/`.
+The backend also serves the UI from `backend/static/`, so the UI and the API share one origin and CORS is not needed.
+All bodies are JSON. Errors come back as HTTP 400 `{"detail": "<message>"}`, with 404 or 409 where noted.
 
 ## Concepts
-- One sensor at a time. `sensor: "SIM"` is a built-in simulator (no hardware needed).
-- The raw sensor stream (up to kHz) is reduced to **~25 frames/s** before it reaches the browser.
-- Invalid readings never appear as values. They are counted in `errors_in_window` and described in `last_error`.
+- One source at a time:
+  - `SIM`: a built-in simulator.
+  - `ILD1420-serial`: the real sensor over USB serial. Verified on an ILD1420-50, and it works on macOS.
+  - `REPLAY`: plays back a recording.
+  - MEDAQLib sensor names: Windows/Linux only, untested.
+- The raw stream (up to 4 kHz) is reduced to **~25 frames/s** for the browser.
+- Invalid readings never appear as values. They are counted (`errors_in_window`) and described (`last_error`).
+- All distances are in **mm from the start of the measuring range**. `dist_from_face_mm` adds the start of the
+  measuring range (`info.smr_mm`). For the ILD1420-50 the range is 35-85 mm from the sensor face.
 
 ## State object
-Returned by `/api/status`, `/api/connect`, `/api/disconnect`, `/api/record/*`.
+Returned by `/api/status`, `/api/connect`, `/api/disconnect`, `/api/record/*`, `/api/tare`.
 ```json
 {
   "status": "disconnected | streaming | error",
-  "error": "",                         // message when status = error
-  "source": "sim | medaqlib | null",
-  "info": {"model": "SIM-ILD1420", "serial": "SIM-0001", "range_mm": 25.0, "unit": "µm"},
-  "recording": false,
-  "rec_file": null,                    // e.g. "rec_20261127_165850.csv"
-  "rec_samples": 0,
-  "cfg": {}                            // the connect request in use
+  "error": "",
+  "source": "sim | serial-ild1420 | replay | medaqlib | null",
+  "info": {"model": "ILD1420-50", "serial": "15060171", "range_mm": 50.0, "smr_mm": 35, "firmware": "000.018", "unit": "mm"},
+  "recording": false, "rec_file": null, "rec_samples": 0, "rec_label": null,
+  "rec_until_s": null,              // seconds left of a timed recording
+  "tare_mm": null,                  // active software zero, or null
+  "dropped_total": 0,               // samples lost between sensor and PC (from the sensor counter)
+  "cfg": {}
 }
 ```
-`info.unit` is `"µm"` for the simulator and `"mm"` for a real sensor (real model/serial/range are not read yet).
+For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and `duration_s`.
 
 ## REST endpoints
-| Method & path | Body | Returns | Purpose |
+| Method & path | Body / query | Returns | Purpose |
 |---|---|---|---|
-| `GET /api/status` | – | State | Current connection/recording state |
-| `GET /api/sensors/scan` | – | `[{sensor, model, interface, port, serial}]` | List sensors. **Only returns the simulator for now**; real discovery is not built |
-| `POST /api/connect` | `{sensor, interface?, port?, baudrate?, ip?}` | State | Open a sensor (closes any previous one) |
-| `POST /api/disconnect` | – | State | Close sensor, stop any recording |
-| `POST /api/config` | `{"rate_khz": 4.0}` | `{answer}` | Change sample rate (see unit warning) |
-| `GET /api/settings` | – | `{rate_khz, averaging:{mode,depth}, options, raw?}` | Current settings and the allowed choices (for building dropdowns). `raw` = all sensor settings (ILD1420 only) |
-| `POST /api/settings` | any subset of `{rate_khz, averaging:{mode, depth}}` | the new settings | Change settings. Invalid choices return HTTP 400 |
-| `GET /api/history?seconds=10&bins=300` | – | `[{t, min, max, mean}]` | Recent valid readings in time buckets, to prefill the chart on page load. Empty if no valid data |
-| `POST /api/command` | `{cmd, params?}` | `{answer}` | Raw MEDAQLib sensor command |
-| `POST /api/record/start` | – | State | Start writing a CSV |
-| `POST /api/record/stop` | – | State | Stop and close the CSV |
-| `GET /api/recordings` | – | `["rec_….csv"]` | List saved recordings |
-| `GET /api/recordings/{name}` | – | CSV file | Download a recording |
+| `GET /api/status` | – | State | Connection, recording and tare state |
+| `GET /api/sensors/scan` | – | list | Simulator, USB serial ports (not probed) and recordings (as `REPLAY` entries) |
+| `POST /api/connect` | see below | State | Open a source (closes the previous one) |
+| `POST /api/disconnect` | – | State | Close it. Stops any recording; a real sensor gets its settings back |
+| `GET /api/settings` | – | settings | Current settings and the allowed `options` |
+| `POST /api/settings` | any subset of `{rate_khz, averaging, channels}` (`REPLAY`: `{speed, loop}`) | settings | Change settings |
+| `POST /api/tare` | `{"on": true \| false}` | State | Software zero: subtract the current 1 s mean from displayed values. Recordings stay raw |
+| `GET /api/history?seconds=10&bins=300` | – | `[{t, min, max, mean}]` | Recent valid readings, bucketed (prefills the live chart; tare applied) |
+| `POST /api/record/start` | `{label?, notes?, duration_s?}` | State | Start a recording. With `duration_s` it stops by itself |
+| `POST /api/record/stop` | – | State | Stop it and finish the metadata |
+| `GET /api/recordings` | – | `[metadata]` | All recordings, newest first (see "Recordings") |
+| `GET /api/recordings/{file}/series?bins=500&channel=dist_mm` | – | `[{t, min, max, mean}]` | A recording bucketed for a chart. `t` = seconds from its start. `channel` is any numeric CSV column |
+| `GET /api/recordings/{file}` | – | file | Download the CSV (or the `.json` sidecar) |
+| `DELETE /api/recordings/{file}` | – | `{deleted}` | Delete the CSV and its sidecar. 409 while it is being recorded |
+| `POST /api/command` | `{cmd, params?}` | `{answer}` | Raw sensor command (advanced) |
+| `POST /api/config` | `{"rate_khz": 2}` | `{answer}` | Older shortcut for the rate; prefer `/api/settings` |
 
 ### `POST /api/connect`
 | Field | Example | Notes |
 |---|---|---|
-| `sensor` | `"SIM"`, **`"ILD1420-serial"`**, `"ILD1420"`, `"ILD5500"`, `"ME-Bus"` | `SIM`; `ILD1420-serial` = direct serial protocol, **works on macOS and is verified on real hardware**; others go through MEDAQLib (Windows/Linux, untested) |
-| `interface` | `"RS232"`, `"TCP/IP"`, `"IF2004_USB"` | USB-RS422 converters (IF2001) use `"RS232"` |
-| `port` | `"COM25"`, `"/dev/cu.usbserial-000101"` | Serial. For `ILD1420-serial` the baudrate defaults to 921600 |
-| `baudrate` | `115200` | Serial only |
-| `ip` | `"169.254.168.150"` | `TCP/IP`; sent as `IP_RemoteAddr`, required in that case |
+| `sensor` | `"SIM"`, `"ILD1420-serial"`, `"REPLAY"`, `"ILD1420"` | Source type |
+| `port` | `"/dev/cu.usbserial-000101"`, `"COM25"` | Serial. `ILD1420-serial` defaults to 921600 baud |
+| `channels` | `["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]` | Extra values per sample (default: all) |
+| `file` | `"rec_20261127_181128.csv"` | `REPLAY` only |
+| `speed`, `loop` | `1.0`, `true` | `REPLAY` only |
+| `restore_output` | `"ANALOG"` | `ILD1420-serial`: OUTPUT mode to set on disconnect |
+| `interface`, `baudrate`, `ip` | | MEDAQLib sensors only |
 
-Examples:
 ```json
 {"sensor": "SIM"}
 {"sensor": "ILD1420-serial", "port": "/dev/cu.usbserial-000101"}
-{"sensor": "ILD1420", "interface": "RS232", "port": "COM25", "baudrate": 115200}
-{"sensor": "ILD5500", "interface": "TCP/IP", "ip": "169.254.168.150"}
+{"sensor": "REPLAY", "file": "rec_20261127_181128.csv", "speed": 1, "loop": true}
 ```
 
-### `POST /api/config`
-`{"rate_khz": 4.0}`. Unit is **kHz**. For `ILD1420-serial` the allowed values are `0.25, 0.5, 1, 2, 4, 8`
-(anything else returns HTTP 400); verified on hardware. For MEDAQLib sensors the value is passed through
-unchanged as `SP_Measrate`, and some sensors expect Hz instead (MEDAQLib.pdf p.160 vs p.1355), so check per model.
-
-### `POST /api/command`
-`{"cmd": "Get_Setup", "params": {"SP_Measrate": 4.0}}`
-Sets each parameter, then runs the command. For `ILD1420-serial` the command is a raw ASCII command of the sensor and `params.args` is appended, e.g.
-`{"cmd": "AVERAGE", "params": {"args": "MEDIAN 9"}}` (set) or `{"cmd": "AVERAGE"}` (query → `"AVERAGE MEDIAN 9"`),
-`{"cmd": "GETINFO"}`, `{"cmd": "PRINT"}`. **These change real sensor settings** (volatile until saved on the sensor).
-For MEDAQLib sensors parameters are typed by JSON type: integer or boolean → int,
-number with decimals → double, anything else → string. For a real sensor `answer` is the full MEDAQLib
-parameter dump. Useful for the "run `Get_Setup`, change a setting in sensorTOOL, run it again, diff" trick.
-
-### Settings details
-`averaging.mode`: `NONE` (no depth), `MOVING` (2, 4, 8, 16, 32, 64, 128), `RECURSIVE` (2–32767), `MEDIAN` (3, 5, 7, 9).
-`rate_khz`: 0.25, 0.5, 1, 2, 4, 8. Both come back under `options`, so the UI should build its controls from `options`.
-For `ILD1420-serial` the settings are read once at connect and then tracked, so changes made elsewhere (sensorTOOL,
-web interface) during a session are not seen. Settings are not saved on the sensor: it reverts after a power cycle.
-
-## WebSocket `/ws/stream`
-Server → client only. The client can ignore anything it sends. Frame (~25/s while streaming):
+### Settings
 ```json
 {
-  "t": 3508.4,                 // seconds, monotonic clock (not wall-clock; use for x-axis spacing)
-  "value": 8518.9,             // latest valid reading, null if none in the last second
-  "min": 8504.9, "max": 16539.1, "mean": 12766.9,   // over the last 1 s of valid readings, null if none
-  "n": 1997,                   // valid readings in that 1 s window
-  "errors_in_window": 3,       // invalid readings in that window
-  "last_error": {"code": 4, "text": "no peak/edge"},   // null until the first error since connect
-  "rate_hz": 1997,             // measured samples/s (smoothed)
-  "status": "streaming",
-  "recording": true,
-  "rec_samples": 2883
+  "rate_khz": 2.0,
+  "averaging": {"mode": "MEDIAN", "depth": 9},
+  "channels": ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"],   // what was asked for
+  "channels_active": ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"],  // what fits the bandwidth at this rate
+  "options": {"rate_khz": [0.25, 0.5, 1, 2, 4], "averaging": {"NONE": [], "MOVING": [2,4,...,128],
+              "RECURSIVE": "2..32767", "MEDIAN": [3,5,7,9]}, "channels": ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]}
 }
 ```
-`value`, `min`, `max`, `mean` can be **`null`**: the UI must handle it (gap in the line, show "–").
-`last_error.code` meanings (MEDAQLib.pdf p.135): 1 scaling underflow, 2 scaling overflow, 3 too much data for baudrate,
-4 no peak/edge, 5 peak before range, 6 peak after range, 7 cannot be calculated, 8 global error, 9 peak too wide,
-10 laser off. Not every sensor reports every code.
+- **Build the UI controls from `options`.** It only lists rates this sensor accepts. The connected ILD1420-50 rejects 8 kHz
+  (E236, laser class 1 models are limited to 4 kHz, manual p.16). Trying it returns HTTP 400, and 8 is removed from `options`.
+- The serial line carries about 26,000 values/s. At 4 kHz `SHUTTER` is dropped automatically, so check `channels_active`.
+- A real sensor pauses its stream for about 0.5 s while settings change. This is not counted as dropped data.
+- Settings are read at connect and then tracked; changes made in sensorTOOL during a session are not seen. They are
+  not saved on the sensor, so it reverts after a power cycle. The backend restores `OUTPUT` and `OUTADD_RS422` on disconnect and on server stop.
+- `ILD1420-serial` also returns `order` (the sensor's frame layout) and `raw` (all sensor settings).
 
-The stream carries no frames while `status` is not `streaming`. Poll `/api/status` (or reconnect the socket) to see
-`error` messages. Frames include the status, so the UI should show a banner on `status != "streaming"`.
+## WebSocket `/ws/stream`
+Server → client only, about 25 frames/s while streaming:
+```json
+{
+  "t": 3508.4,                          // s, monotonic clock (x-axis spacing, not wall time)
+  "value": 8.42,                        // latest valid distance (mm, tare applied), null if none in the last 1 s
+  "min": 8.40, "max": 44.18, "mean": 25.1,   // last 1 s of valid readings (tare applied), null if none
+  "n": 1997,                            // valid readings in that window
+  "dist_from_face_mm": 43.42,           // latest valid reading + smr_mm (tare NOT applied), null if unknown
+  "tare_mm": null,
+  "errors_in_window": 3,
+  "last_error": {"code": 4, "text": "no peak/edge"},
+  "intensity": 15.1,                    // % of signal intensity, mean since the last frame (null if channel off)
+  "shutter_us": 496.1,                  // exposure time of the latest sample
+  "counter": 115802,                    // sensor measurement counter (18 bit, wraps)
+  "sensor_ts_ms": 3063785.33,           // sensor clock, 0.01 ms resolution
+  "state": 131140,                      // raw status word
+  "state_flags": {"peak_before_roi": false, "peak_after_roi": false, "no_peak": true,
+                  "before_smr": false, "after_emr": true, "triggered": false, "led": "red"},
+  "dropped_total": 0,
+  "rate_hz": 1997, "status": "streaming", "recording": true, "rec_samples": 2883
+}
+```
+- Any field can be `null`. The extra fields are null when their channel is off.
+- `state_flags.led` mirrors the LED on the sensor: green = target in range, yellow = mid range, red = error, off = laser off.
+- `last_error.code`: 3 too much data for baudrate, 4 no peak, 5 peak before range, 6 peak after range, 7 cannot be calculated,
+  8 global error, 9 peak too wide, 10 laser off.
 
 ## Recordings
-CSV with header `t_s,value`. `t_s` is the same monotonic clock as `t`. An invalid reading is written as `ERR<code>`
-(for example `ERR4`) instead of a number. Files are in `backend/recordings/`.
+`backend/recordings/rec_YYYYMMDD_HHMMSS.csv`, with one row per sensor sample:
 
-## Real sensor notes (`ILD1420-serial`, tested on an ILD1420-50)
-- On connect the backend reads `GETINFO` (model, serial, range, firmware) into `info`, remembers the sensor's current
-  `OUTPUT` mode, and switches it to `RS422` to start the stream. **This turns the 4-20 mA analog output off.**
-  On disconnect it restores the previous mode (`ANALOG` if it was already `RS422`, or `restore_output` from the connect body).
-- `value` is the distance in **mm from the start of the measuring range** (0 to range_mm, slightly beyond is possible).
-  The conversion follows the manual (p.85); it has not been checked against a reference distance yet.
-- No target in range yields errors (`last_error`: 5/6 "peak before/after range", 4 "no peak", 10 "laser off") and `value: null`.
-- The stream stops with `status: "error"` if no data arrives for 3 s.
+| Column | Meaning |
+|---|---|
+| `t_s` | Monotonic seconds (same clock as the WS `t`) |
+| `wall_time` | Unix time (seconds) |
+| `dist_mm` | Distance from the start of the measuring range. Empty for an invalid reading |
+| `error_code` | Set for an invalid reading (see the codes above) |
+| `counter`, `sensor_ts_ms`, `intensity_pct`, `shutter_us`, `state` | Extra channels. Empty when the channel is off |
 
-## Not built yet (do not design UI around these)
-- Real discovery. `/api/sensors/scan` returns the simulator plus USB serial ports it finds; ports are not probed.
-- Multi-sensor mode (several sensors in one stream), additional output values (video, intensity, exposure time).
-- MEDAQLib sensors (`ILD1420`, `ILD5500`, ...) are untested: the MEDAQLib DLL is Windows-only.
+Sidecar `rec_….json` (also what `GET /api/recordings` returns, plus `size_bytes` and `active`):
+```json
+{"file": "rec_….csv", "label": "hand sweep", "notes": "", "source": "serial-ild1420", "info": {...},
+ "settings": {"rate_khz": 2.0, "averaging": {...}, "channels_active": [...], "order": [...]},
+ "tare_mm": null, "started": "2026-11-27T18:11:28", "stopped": "2026-11-27T18:11:31", "duration_s": 3.021,
+ "planned_duration_s": 3, "samples": 6023, "valid": 5900, "errors": 123, "errors_by_code": {"6": 123},
+ "dropped": 0, "min_mm": 2.1, "max_mm": 48.7, "mean_mm": 21.3}
+```
+While a recording runs, its sidecar has `stopped: null`. Older recordings (before this format) have no sidecar, and
+the list shows only `file` for them.
+
+Replay: `POST /api/connect {"sensor": "REPLAY", "file": "..."}` streams the recording through the same WebSocket,
+paced by its `t_s`. Use it for UI work and demos without the sensor. `POST /api/settings {"speed": 4}` changes the speed.
+
+## Not built
+- Multi-sensor mode, the raw video signal, and hardware mastering (`MASTERMV`). Use `/api/tare` for zeroing the display.
+- Real discovery: scan lists serial ports but does not probe them.
+- MEDAQLib sensors are untested, because the MEDAQLib DLL is Windows-only.

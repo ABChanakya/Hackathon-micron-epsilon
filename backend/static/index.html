@@ -11,8 +11,9 @@
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b||{})});
 const ys=[],c=document.getElementById('c').getContext('2d');
 new WebSocket(`ws://${location.host}/ws/stream`).onmessage=e=>{
- const f=JSON.parse(e.data);ys.push(f.value);if(ys.length>450)ys.shift();
+ const f=JSON.parse(e.data);if(f.value!==null)ys.push(f.value);if(ys.length>450)ys.shift();
  document.getElementById('s').textContent=JSON.stringify(f,null,1);
  c.clearRect(0,0,900,260);c.strokeStyle='#e30613';c.beginPath();
- ys.forEach((y,i)=>{const py=260-(y-8000)/9000*260;i?c.lineTo(i*2,py):c.moveTo(0,py)});c.stroke();};
+ const lo=Math.min(...ys),hi=Math.max(...ys),sp=(hi-lo)||1;
+ ys.forEach((y,i)=>{const py=250-(y-lo)/sp*240;i?c.lineTo(i*2,py):c.moveTo(0,py)});c.stroke();};
 </script>

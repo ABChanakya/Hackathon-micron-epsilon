@@ -1,13 +1,23 @@
-"""Data sources. Both expose the same tiny interface so the hub doesn't care which is used.
+"""Data sources. All expose the same small interface so the hub doesn't care which is used.
 
-    open(cfg) / close() / read() -> list[float] (blocks briefly) / command(cmd, params) -> str
+    open(cfg) / close() / read() -> list[dict] (blocks briefly) / command(cmd, params) -> str
+    settings() -> dict / apply(body) -> dict          (optional)
+
+Each sample is a dict. "dist" is always present: distance in mm, or ERR_BASE - code for an invalid reading
+(MEDAQLib convention, MEDAQLib.pdf p.135). Optional extras: counter, sensor_ts_ms, intensity_pct, shutter_us, state.
 """
-import math, os, random, re, time
+import contextlib, csv, json, math, os, random, re, time
 
+ERR_BASE = -1e10
+EXTRA_KEYS = ("counter", "sensor_ts_ms", "intensity_pct", "shutter_us", "state")
 
 SERIAL_OPTIONS = {"rate_khz": [0.25, 0.5, 1, 2, 4, 8],
                   "averaging": {"NONE": [], "MOVING": [2, 4, 8, 16, 32, 64, 128],
-                                "RECURSIVE": "2..32767", "MEDIAN": [3, 5, 7, 9]}}
+                                "RECURSIVE": "2..32767", "MEDIAN": [3, 5, 7, 9]},
+                  "channels": ["COUNTER", "INTENSITY", "STATE", "TIMESTAMP", "SHUTTER"]}
+
+# Start of measuring range from the sensor face, ILD1420 by measuring range (manual p.16)
+ILD1420_SMR_MM = {10: 20, 25: 25, 50: 35, 100: 50, 200: 60, 500: 100}
 
 
 def _check_avg(a):
@@ -22,15 +32,25 @@ def _check_avg(a):
     return {"mode": mode, "depth": depth}
 
 
+def _check_channels(ch):
+    ch = [str(c).upper() for c in ch]
+    bad = [c for c in ch if c not in SERIAL_OPTIONS["channels"]]
+    if bad:
+        raise RuntimeError(f"unknown channels {bad}; options: {SERIAL_OPTIONS['channels']}")
+    return [c for c in SERIAL_OPTIONS["channels"] if c in ch]     # canonical (priority) order
+
+
 class SimSource:
-    """Fake sensor: sine + noise. Lets the UI be built and demoed without hardware."""
+    """Fake ILD1420-50: slow sine + noise in mm, with counter/timestamp/intensity and occasional errors."""
     kind = "sim"
 
     def __init__(self):
         self.rate_hz = 2000.0
         self._t0 = time.perf_counter()
         self._n = 0
-        self.info = {"model": "SIM-ILD1420", "serial": "SIM-0001", "range_mm": 25.0, "unit": "µm"}
+        self.avg = {"mode": "MEDIAN", "depth": 9}
+        self.channels = list(SERIAL_OPTIONS["channels"])
+        self.info = {"model": "SIM-ILD1420-50", "serial": "SIM-0001", "range_mm": 50.0, "smr_mm": 35, "unit": "mm"}
 
     def open(self, cfg):
         self._t0, self._n = time.perf_counter(), 0
@@ -44,8 +64,19 @@ class SimSource:
         out = []
         for i in range(self._n, due):
             t = i / self.rate_hz
-            # ~0.1% of samples mimic a sensor error (-1e10 - 4 = 'no peak'), like the real MEDAQLib scaled output
-            out.append(-1e10 - 4 if random.random() < 0.001 else 12500 + 4000 * math.sin(2 * math.pi * 0.5 * t) + random.gauss(0, 15))
+            err = random.random() < 0.001          # ~0.1% invalid readings, like a real sensor ('no peak')
+            s = {"dist": ERR_BASE - 4 if err else 25 + 10 * math.sin(2 * math.pi * 0.5 * t) + random.gauss(0, 0.015)}
+            if "COUNTER" in self.channels:
+                s["counter"] = i % 262144
+            if "TIMESTAMP" in self.channels:
+                s["sensor_ts_ms"] = round(t * 1000, 2)
+            if "INTENSITY" in self.channels:
+                s["intensity_pct"] = 0.0 if err else round(55 + 5 * math.sin(2 * math.pi * 0.1 * t), 2)
+            if "SHUTTER" in self.channels:
+                s["shutter_us"] = 496.1
+            if "STATE" in self.channels:
+                s["state"] = (4 | (2 << 16)) if err else (1 << 16)    # no peak + red LED / green LED
+            out.append(s)
         self._n = due
         return out
 
@@ -55,20 +86,24 @@ class SimSource:
         return "OK (simulated)"
 
     def settings(self):
-        return {"rate_khz": self.rate_hz / 1000.0, "averaging": self.avg, "options": SERIAL_OPTIONS}
+        return {"rate_khz": self.rate_hz / 1000.0, "averaging": self.avg, "channels": self.channels,
+                "channels_active": self.channels, "options": SERIAL_OPTIONS}
 
     def apply(self, body):
         if "rate_khz" in body:
-            self.rate_hz = float(body["rate_khz"]) * 1000.0
+            khz = float(body["rate_khz"])
+            if khz not in SERIAL_OPTIONS["rate_khz"]:
+                raise RuntimeError(f"rate_khz must be one of {SERIAL_OPTIONS['rate_khz']}")
+            self.rate_hz = khz * 1000.0
         if "averaging" in body:
             self.avg = _check_avg(body["averaging"])
+        if "channels" in body:
+            self.channels = _check_channels(body["channels"])
         return self.settings()
-
-    avg = {"mode": "MEDIAN", "depth": 9}
 
 
 class MedaqSource:
-    """Real sensor through MEDAQLib (see MEDAQLib.pdf section 4)."""
+    """Real sensor through MEDAQLib (see MEDAQLib.pdf section 4). Windows/Linux only, untested."""
     kind = "medaqlib"
 
     def __init__(self):
@@ -133,7 +168,7 @@ class MedaqSource:
         raw, scaled, cnt = self.obj.TransferData(n)
         if self.obj.GetLastError() != self.m.ERR_CODE.ERR_NOERROR:
             raise RuntimeError(self.obj.GetError())
-        return list(scaled[0:cnt:self.per_frame])  # first signal of each frame
+        return [{"dist": v} for v in scaled[0:cnt:self.per_frame]]  # first signal of each frame
 
     def command(self, cmd, params):
         for k, v in (params or {}).items():
@@ -154,13 +189,16 @@ class MedaqSource:
 
 class SerialSource:
     """optoNCDT ILD1420 straight over its RS422/USB serial line (pyserial, no MEDAQLib -> works on macOS).
-    Protocol: ILD1420 manual ch. 8 + appendix A3. ASCII commands end with CRLF and are answered with '...\r\n->';
-    measurement values are 3-byte binary frames (flag bits 00 L / 01 M / 10|11 H, 6 data bits each)."""
+    Protocol: ILD1420 manual ch. 8 + appendix A3. ASCII commands end with CRLF and are answered with '...\r\n->'.
+    Measurement values are 3-byte words (flag bits 00 L / 01 M / 10|11 H, 6 data bits each). A frame starts with
+    an H flag of 10; the following words (H flag 11) come in the order reported by GETOUTINFO_RS422
+    (verified: SHUTTER COUNTER TIMESTAMPLO TIMESTAMPHI INTENSITY1 DIST1 STATE)."""
     kind = "serial-ild1420"
-    ERR_BASE = -1e10   # same convention as MEDAQLib so hub.py treats errors uniformly
     # 18-bit distance codes >= 262075 (manual p.86) -> MEDAQLib-style error code (see hub.ERR_NAMES)
     ERR_MAP = {262075: 3, 262076: 4, 262077: 5, 262078: 6, 262080: 8, 262081: 9, 262082: 10}
-    MEASRATES = (0.25, 0.5, 1, 2, 4, 8)
+    MEASRATES = tuple(SERIAL_OPTIONS["rate_khz"])
+    WORDS = {"COUNTER": 1, "INTENSITY": 1, "STATE": 1, "TIMESTAMP": 2, "SHUTTER": 1}
+    BUDGET = 26000      # words/s: 921600 baud / 10 bits / 3 bytes = 30720, keep ~15% margin
 
     def __init__(self):
         self.ser = None
@@ -169,17 +207,22 @@ class SerialSource:
         self.range_mm = 50.0
         self.info = {}
         self.restore = None
+        self.restore_add = None
+        self.wanted = list(SERIAL_OPTIONS["channels"])
+        self.channels = []
+        self.order = ["DIST1"]
+        self.cur = None
+        self.unsupported = set()      # rates this unit rejected (E236)
         self._last_rx = 0.0
 
     # ---- ASCII command channel ---------------------------------------------------------
     def _ascii(self, line, wait=1.0):
-        """Send a command while data may be streaming. A reply is text ending in '->'. Valid binary frames are
+        """Send a command while data may be streaming. A reply is text ending in '->'. Valid binary words are
         L(0x00-3F) M(0x40-7F) H(0x80-BF), so the text is the run of bytes before '->' back to the last H byte."""
-        import time as _t
         self.ser.write(line.encode() + b"\r\n")
-        end = _t.time() + wait
+        end = time.time() + wait
         got = bytearray(self.buf); self.buf.clear()
-        while _t.time() < end:
+        while time.time() < end:
             got += self.ser.read(max(self.ser.in_waiting, 1))
             if got.find(b"->") >= 0:
                 break
@@ -194,14 +237,64 @@ class SerialSource:
         self.buf += got[:i] + got[j + 2:]          # everything around the reply is still binary data
         return text
 
+    def _ok(self, line, wait=1.0):
+        ans = self._ascii(line, wait)
+        if re.match(r"E\d+", ans):
+            raise RuntimeError(f"{line}: {ans}")
+        return ans
+
+    @contextlib.contextmanager
+    def _paused(self):
+        """Stop the RS422 stream while changing settings. The sensor keeps streaming while it answers commands,
+        so with several values per sample the reply text gets interleaved with binary data (seen on hardware)."""
+        if getattr(self, "_pause_depth", 0):
+            yield; return
+        self._pause_depth = 1
+        try:
+            self.ser.write(b"OUTPUT NONE\r\n")
+            # Drain until its '->' arrived and the line is quiet; a late prompt would shift every later reply by one.
+            end, last, seen, tail = time.time() + 2.0, time.time(), False, b""
+            while time.time() < end:
+                d = self.ser.read(4096)
+                now = time.time()
+                if d:
+                    last, tail = now, (tail + d)[-64:]
+                    seen = seen or b"->" in tail
+                elif seen and now - last > 0.15:
+                    break
+            self.buf.clear(); self.cur = None
+            yield
+        finally:
+            self._pause_depth = 0
+            try:
+                self._ascii("OUTPUT RS422")
+            finally:
+                self._last_rx = time.time()
+
+    def _fit(self, wanted, rate_hz):
+        """Drop lowest-priority channels until all words fit the RS422 bandwidth at this rate."""
+        ch = _check_channels(wanted)
+        while ch and (1 + sum(self.WORDS[c] for c in ch)) * rate_hz > self.BUDGET:
+            ch.pop()
+        return ch
+
+    def _set_channels(self, channels):
+        self._ok("OUTADD_RS422 " + (" ".join(channels) if channels else "NONE"))
+        info = self._ascii("GETOUTINFO_RS422")
+        order = info.split()[1:] if info.startswith("GETOUTINFO_RS422") else []
+        if "DIST1" not in order:
+            raise RuntimeError(f"unexpected GETOUTINFO_RS422 reply: {info!r}")
+        self.channels, self.order, self.cur = channels, order, None
+        self.buf.clear()
+
     def open(self, cfg):
-        import serial, time as _t
+        import serial
         port = cfg.get("port")
         if not port:
             raise RuntimeError("port required, e.g. /dev/cu.usbserial-000101")
         self.ser = serial.Serial(port, int(cfg.get("baudrate") or 921600), timeout=0.02)
         try:
-            self.ser.write(b"\r\n"); _t.sleep(0.3); self.ser.reset_input_buffer()   # absorbs the stray first-write error
+            self.ser.write(b"\r\n"); time.sleep(0.3); self.ser.reset_input_buffer()   # absorbs the stray first-write error
             self.buf.clear()
             txt = self._ascii("GETINFO")
             if "Name:" not in txt:
@@ -211,18 +304,22 @@ class SerialSource:
             m = float(kv.get("Measuring range", "50").lower().replace("mm", "").strip() or 50)
             self.range_mm = m
             self.info = {"model": kv.get("Name"), "serial": kv.get("Serial"), "range_mm": m,
-                         "firmware": kv.get("Version"), "unit": "mm"}
+                         "smr_mm": ILD1420_SMR_MM.get(int(m)), "firmware": kv.get("Version"), "unit": "mm"}
             mo = re.search(r"OUTPUT\s+(\w+)", self._ascii("OUTPUT"))   # remember the output mode to restore on close
             prev = mo.group(1) if mo else "ANALOG"
             self.restore = cfg.get("restore_output") or ("ANALOG" if prev == "RS422" else prev)
             if prev == "RS422":                                    # stream active: silence it so PRINT is clean text
-                self._ascii("OUTPUT ANALOG"); _t.sleep(0.2); self.ser.reset_input_buffer(); self.buf.clear()
+                self._ascii("OUTPUT ANALOG"); time.sleep(0.2); self.ser.reset_input_buffer(); self.buf.clear()
             self.snapshot = dict(re.findall(r"^(\w+)[ \t]+(.*?)\s*$", self._ascii("PRINT", wait=2.0), re.M))
-            self._ascii("OUTPUT RS422")
-            mr = re.search(r"MEASRATE\s+([\d.]+)", self._ascii("MEASRATE"))
+            self.restore_add = self.snapshot.get("OUTADD_RS422", "NONE")
+            mr = re.search(r"MEASRATE\s+([\d.]+)", self.snapshot.get("MEASRATE", "") and "MEASRATE " + self.snapshot["MEASRATE"])
             if mr:
                 self.rate_hz = float(mr.group(1)) * 1000.0
-            self._last_rx = _t.time()
+            if cfg.get("channels") is not None:
+                self.wanted = _check_channels(cfg["channels"])
+            self._set_channels(self._fit(self.wanted, self.rate_hz))  # sensor idle: clean replies
+            self._ascii("OUTPUT RS422")
+            self._last_rx = time.time()
         except Exception:
             self.close()
             raise
@@ -231,7 +328,10 @@ class SerialSource:
         if self.ser:
             try:
                 if self.restore:
-                    self._ascii(f"OUTPUT {self.restore}", wait=0.8)
+                    self._ascii(f"OUTPUT {self.restore}", wait=0.8)   # stop the stream first ...
+                    time.sleep(0.2); self.ser.reset_input_buffer(); self.buf.clear()
+                if self.restore_add is not None:
+                    self._ascii(f"OUTADD_RS422 {self.restore_add}", wait=0.8)   # ... then restore the extra values
             except Exception:
                 pass
             try:
@@ -242,22 +342,42 @@ class SerialSource:
     # ---- measurement channel -----------------------------------------------------------
     def _scale(self, x):
         if x >= 262075 or x > 65520:
-            return self.ERR_BASE - self.ERR_MAP.get(x, 7)
+            return ERR_BASE - self.ERR_MAP.get(x, 7)
         return (102.0 / 65520.0 * x - 1.0) * self.range_mm / 100.0   # mm from start of measuring range (manual p.85)
 
+    def _sample(self, words):
+        """Map one frame (raw words in GETOUTINFO order) to a sample dict using the formulas on manual p.85-86."""
+        v = dict(zip(self.order, words))
+        s = {"dist": self._scale(v["DIST1"])}
+        if "COUNTER" in v:
+            s["counter"] = v["COUNTER"]
+        if "TIMESTAMPLO" in v and "TIMESTAMPHI" in v:
+            s["sensor_ts_ms"] = (65536 * v["TIMESTAMPHI"] + v["TIMESTAMPLO"]) / 100.0
+        if "INTENSITY1" in v:
+            s["intensity_pct"] = round(v["INTENSITY1"] * 25.0 / 16368.0, 2)
+        if "SHUTTER" in v:
+            s["shutter_us"] = v["SHUTTER"] / 10.0
+        if "STATE" in v:
+            s["state"] = v["STATE"]
+        return s
+
     def read(self):
-        import time as _t
         self.buf += self.ser.read(max(self.ser.in_waiting, 1))
-        b, out, i, n = self.buf, [], 0, len(self.buf)
+        b, out, i, n, size = self.buf, [], 0, len(self.buf), len(self.order)
         while i + 2 < n:
             if b[i] >> 6 == 0 and b[i + 1] >> 6 == 1 and b[i + 2] >> 6 >= 2:
-                if b[i + 2] >> 6 == 2:    # value 1 only (OUTADD_RS422 is NONE); 11 = additional values, skipped
-                    out.append(self._scale((b[i] & 63) | (b[i + 1] & 63) << 6 | (b[i + 2] & 63) << 12))
+                w = (b[i] & 63) | (b[i + 1] & 63) << 6 | (b[i + 2] & 63) << 12
+                if b[i + 2] >> 6 == 2:          # first word of a frame (an incomplete previous frame is dropped)
+                    self.cur = [w]
+                elif self.cur is not None:
+                    self.cur.append(w)
+                if self.cur is not None and len(self.cur) == size:
+                    out.append(self._sample(self.cur)); self.cur = None
                 i += 3
             else:
                 i += 1
         del b[:i]
-        now = _t.time()
+        now = time.time()
         if out:
             self._last_rx = now
         elif now - self._last_rx > 3:
@@ -268,29 +388,135 @@ class SerialSource:
         sn = getattr(self, "snapshot", {})            # PRINT is read once while the sensor is idle; kept in sync by apply()
         a = sn.get("AVERAGE", "NONE").split()
         avg = {"mode": a[0], "depth": int(a[1]) if len(a) > 1 else None}
-        return {"rate_khz": self.rate_hz / 1000.0, "averaging": avg, "options": SERIAL_OPTIONS, "raw": sn}
+        return {"rate_khz": self.rate_hz / 1000.0, "averaging": avg, "channels": self.wanted,
+                "channels_active": self.channels, "order": self.order, "raw": sn,
+                "options": dict(SERIAL_OPTIONS, rate_khz=[r for r in SERIAL_OPTIONS["rate_khz"] if r not in self.unsupported])}
+
+    def _set_rate(self, khz):
+        if khz not in self.MEASRATES:
+            raise RuntimeError(f"MEASRATE must be one of {self.MEASRATES} kHz")
+        new = khz * 1000.0
+        fit = self._fit(self.wanted, new)
+        try:
+            if new > self.rate_hz:                   # shrink the frame before speeding up, so it never overflows
+                self._set_channels(fit); self._ok(f"MEASRATE {khz:g}")
+            else:
+                self._ok(f"MEASRATE {khz:g}"); self._set_channels(fit)
+        except RuntimeError as e:
+            self._set_channels(self._fit(self.wanted, self.rate_hz))   # back to the channel set of the old rate
+            if "E236" in str(e):
+                self.unsupported.add(khz)
+                raise RuntimeError(f"sensor rejected {khz:g} kHz (E236). Laser class 1 ILD1420 models are limited to "
+                                   f"4 kHz (manual p.16). Rate stays {self.rate_hz / 1000:g} kHz.") from None
+            raise
+        self.rate_hz = new
+        self.snapshot["MEASRATE"] = f"{khz:.3f}"
 
     def apply(self, body):
-        if "rate_khz" in body:
-            self.command("Set_Samplerate", {"SP_Measrate": body["rate_khz"]})
-        if "averaging" in body:
-            a = _check_avg(body["averaging"])
-            line = "AVERAGE NONE" if a["mode"] == "NONE" else f"AVERAGE {a['mode']} {a['depth']}"
-            ans = self._ascii(line)
-            if re.match(r"E\d+", ans):
-                raise RuntimeError(ans)
-            self.snapshot["AVERAGE"] = line[8:]
+        wanted = _check_channels(body["channels"]) if "channels" in body else None   # validate before touching the sensor
+        avg = _check_avg(body["averaging"]) if "averaging" in body else None
+        if "rate_khz" in body and float(body["rate_khz"]) not in self.MEASRATES:
+            raise RuntimeError(f"MEASRATE must be one of {self.MEASRATES} kHz")
+        with self._paused():
+            if wanted is not None:
+                self.wanted = wanted
+                if "rate_khz" not in body:
+                    self._set_channels(self._fit(self.wanted, self.rate_hz))
+            if "rate_khz" in body:
+                self._set_rate(float(body["rate_khz"]))
+            if avg is not None:
+                line = "AVERAGE NONE" if avg["mode"] == "NONE" else f"AVERAGE {avg['mode']} {avg['depth']}"
+                self._ok(line)
+                self.snapshot["AVERAGE"] = line[8:]
         return self.settings()
 
     def command(self, cmd, params):
-        if cmd == "Set_Samplerate":
-            khz = float(params.get("SP_Measrate"))
-            if khz not in self.MEASRATES:
-                raise RuntimeError(f"MEASRATE must be one of {self.MEASRATES} kHz")
-            ans = self._ascii(f"MEASRATE {khz:g}")
-            if re.match(r"E\d+", ans):
-                raise RuntimeError(ans)
-            self.rate_hz = khz * 1000.0
-            return ans or "OK"
-        line = cmd if not params or "args" not in params else f"{cmd} {params['args']}"
-        return self._ascii(line)   # raw ASCII command, e.g. {"cmd":"AVERAGE","params":{"args":"MEDIAN 9"}}
+        with self._paused():
+            if cmd == "Set_Samplerate":
+                self._set_rate(float(params.get("SP_Measrate")))
+                return "OK"
+            line = cmd if not params or "args" not in params else f"{cmd} {params['args']}"
+            return self._ascii(line)   # raw ASCII command, e.g. {"cmd":"AVERAGE","params":{"args":"MEDIAN 9"}}
+
+
+class ReplaySource:
+    """Plays a recording back through the normal pipeline, paced by its t_s column, so the UI works without hardware."""
+    kind = "replay"
+
+    def __init__(self, rec_dir):
+        self.rec_dir = rec_dir
+        self.info = {}
+        self.rate_hz = 0.0
+
+    def open(self, cfg):
+        name = os.path.basename(cfg.get("file") or "")
+        path = os.path.join(self.rec_dir, name)
+        if not name.endswith(".csv") or not os.path.isfile(path):
+            raise RuntimeError(f"recording not found: {name!r} (see /api/recordings)")
+        self.speed = float(cfg.get("speed") or 1.0)
+        self.loop = cfg.get("loop", True) is not False
+        self.ts, self.samples = [], []
+        with open(path, newline="") as f:
+            for row in csv.DictReader(f):
+                try:
+                    t = float(row["t_s"])
+                except (KeyError, ValueError):
+                    continue
+                d = row.get("dist_mm", row.get("value", ""))
+                code = row.get("error_code") or (d[3:] if d.startswith("ERR") else "")
+                if code:
+                    s = {"dist": ERR_BASE - int(code)}
+                elif d:
+                    s = {"dist": float(d)}
+                else:
+                    continue
+                for k in EXTRA_KEYS:
+                    if row.get(k) not in (None, ""):
+                        s[k] = float(row[k]) if k in ("sensor_ts_ms", "intensity_pct", "shutter_us") else int(float(row[k]))
+                self.ts.append(t); self.samples.append(s)
+        if not self.samples:
+            raise RuntimeError(f"recording {name} has no samples")
+        t0 = self.ts[0]
+        self.ts = [t - t0 for t in self.ts]
+        dur = self.ts[-1]
+        self.rate_hz = (len(self.ts) - 1) / dur if dur > 0 else 1000.0
+        meta = {}
+        side = path[:-4] + ".json"
+        if os.path.isfile(side):
+            with open(side) as f:
+                meta = json.load(f)
+        self.meta = meta
+        self.info = dict(meta.get("info") or {"model": "recording", "unit": "mm"})
+        self.info.update({"replay_of": name, "label": meta.get("label", ""), "duration_s": round(dur, 3)})
+        self._start, self._i = time.perf_counter(), 0
+
+    def close(self):
+        pass
+
+    def read(self):
+        time.sleep(0.02)
+        el = (time.perf_counter() - self._start) * self.speed
+        out = []
+        while self._i < len(self.ts) and self.ts[self._i] <= el:
+            out.append(self.samples[self._i]); self._i += 1
+        if self._i >= len(self.ts) and self.loop:
+            self._start, self._i = time.perf_counter(), 0
+        return out
+
+    def settings(self):
+        st = self.meta.get("settings") or {}
+        return {"rate_khz": round(self.rate_hz / 1000.0, 3), "averaging": st.get("averaging"),
+                "channels": st.get("channels_active", []), "channels_active": st.get("channels_active", []),
+                "options": {}, "replay": {"file": self.info.get("replay_of"), "speed": self.speed, "loop": self.loop}}
+
+    def apply(self, body):
+        if "speed" in body:
+            el = (time.perf_counter() - self._start) * self.speed
+            self.speed = max(0.05, float(body["speed"]))
+            self._start = time.perf_counter() - el / self.speed
+        if "loop" in body:
+            self.loop = bool(body["loop"])
+        return self.settings()
+
+    def command(self, cmd, params):
+        raise RuntimeError("commands are not available while replaying a recording")

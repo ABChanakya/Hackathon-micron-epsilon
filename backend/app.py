@@ -1,5 +1,5 @@
 """Run:  uvicorn app:app --port 8000   (from this folder)   ->  http://localhost:8000"""
-import asyncio, os
+import asyncio, csv, glob, json, os
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,12 +16,32 @@ async def _startup():
     hub.loop = asyncio.get_running_loop()
 
 
+@app.on_event("shutdown")
+async def _shutdown():
+    # Close the sensor on server stop (Ctrl+C / SIGTERM) so a real sensor gets its OUTPUT/OUTADD settings back.
+    try:
+        await asyncio.wait_for(hub.call("_disconnect"), 5)
+    except Exception:
+        pass
+
+
 class ConnectReq(BaseModel):
     sensor: str = "SIM"            # "SIM" or a MEDAQLib name: ILD1420, ILD5500, ME-Bus, ...
     interface: str = "RS232"       # RS232 | TCP/IP | IF2004_USB ...
     port: str | None = None        # COM25 or /dev/ttyUSB0
     baudrate: int | None = None
     ip: str | None = None
+    channels: list[str] | None = None   # ILD1420-serial / SIM: extra values, e.g. ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]
+    restore_output: str | None = None    # ILD1420-serial: OUTPUT mode to set on disconnect
+    file: str | None = None              # REPLAY: recording file name (rec_....csv)
+    speed: float = 1.0                   # REPLAY: playback speed
+    loop: bool = True                    # REPLAY: restart at the end
+
+
+class RecReq(BaseModel):
+    label: str = ""
+    notes: str = ""
+    duration_s: float | None = None      # stop automatically after this many seconds
 
 
 class CmdReq(BaseModel):
@@ -38,11 +58,12 @@ async def _do(fn, *a):
 
 @app.get("/api/sensors/scan")
 def scan():
-    # Simulator + any USB-serial ports (candidates for sensor "ILD1420-serial"; not probed until you connect).
-    import glob
+    # Simulator + USB-serial ports (candidates for "ILD1420-serial"; not probed until you connect) + recordings to replay.
     ports = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*"))
-    return [{"sensor": "SIM", "model": "SIM-ILD1420", "interface": "virtual", "port": None, "serial": "SIM-0001"}] + \
-           [{"sensor": "ILD1420-serial", "model": "serial port (unverified)", "interface": "serial", "port": p, "serial": None} for p in ports]
+    return [{"sensor": "SIM", "model": "SIM-ILD1420-50", "interface": "virtual", "port": None, "serial": "SIM-0001"}] + \
+           [{"sensor": "ILD1420-serial", "model": "serial port (unverified)", "interface": "serial", "port": p, "serial": None} for p in ports] + \
+           [{"sensor": "REPLAY", "model": "recording", "interface": "file", "file": r["file"], "label": r.get("label", "")}
+            for r in recordings()]
 
 
 @app.post("/api/connect")
@@ -89,9 +110,16 @@ async def history(seconds: float = 10, bins: int = 300):
     return await _do("_history", min(max(seconds, 0.1), 300), min(max(bins, 10), 2000))
 
 
+@app.post("/api/tare")
+async def tare(body: dict):
+    """{"on": true} zeroes the displayed value on the current 1 s mean; {"on": false} clears it. Recordings stay raw."""
+    return await _do("_set_tare", bool(body.get("on", True)))
+
+
 @app.post("/api/record/start")
-async def rec_start():
-    return await _do("_start_rec")
+async def rec_start(r: RecReq | None = None):
+    r = r or RecReq()
+    return await _do("_start_rec", r.label, r.notes, r.duration_s)
 
 
 @app.post("/api/record/stop")
@@ -99,18 +127,68 @@ async def rec_stop():
     return await _do("_stop_rec")
 
 
+def _rec_path(name):
+    p = os.path.join(hubmod.REC_DIR, os.path.basename(name))
+    if not os.path.isfile(p):
+        raise HTTPException(404, f"no recording {name}")
+    return p
+
+
 @app.get("/api/recordings")
 def recordings():
-    d = hubmod.REC_DIR
-    return sorted(os.listdir(d)) if os.path.isdir(d) else []
+    """Newest first. Each entry is the metadata sidecar; old recordings without one only have file and size."""
+    out = []
+    for p in sorted(glob.glob(os.path.join(hubmod.REC_DIR, "rec_*.csv")), reverse=True):
+        side = p[:-4] + ".json"
+        meta = {"file": os.path.basename(p)}
+        if os.path.isfile(side):
+            try:
+                with open(side) as f:
+                    meta = json.load(f)
+            except Exception:
+                pass
+        meta["size_bytes"] = os.path.getsize(p)
+        meta["active"] = hub.rec is not None and hub.rec_path == p
+        out.append(meta)
+    return out
+
+
+@app.get("/api/recordings/{name}/series")
+def recording_series(name: str, bins: int = 500, channel: str = "dist_mm"):
+    """A recording bucketed for charting: [{t (s from start), min, max, mean}]. Error rows are skipped."""
+    p = _rec_path(name)
+    pts = []
+    with open(p, newline="") as f:
+        for row in csv.DictReader(f):
+            col = row.get(channel, row.get("value") if channel == "dist_mm" else None)
+            if col in (None, "") or col.startswith("ERR"):
+                continue
+            try:
+                pts.append((float(row["t_s"]), float(col)))
+            except ValueError:
+                continue
+    if not pts:
+        return []
+    t0 = pts[0][0]
+    pts = [(t - t0, v) for t, v in pts]
+    return hubmod.bucketize(pts, 0.0, pts[-1][0], min(max(bins, 10), 5000))
 
 
 @app.get("/api/recordings/{name}")
 def recording(name: str):
-    p = os.path.join(hubmod.REC_DIR, os.path.basename(name))
-    if not os.path.isfile(p):
-        raise HTTPException(404)
-    return FileResponse(p, filename=os.path.basename(name))
+    p = _rec_path(name)
+    return FileResponse(p, filename=os.path.basename(p))
+
+
+@app.delete("/api/recordings/{name}")
+def delete_recording(name: str):
+    p = _rec_path(name if name.endswith(".csv") else name + ".csv")
+    if hub.rec is not None and hub.rec_path == p:
+        raise HTTPException(409, "recording in progress; stop it first")
+    os.remove(p)
+    if os.path.isfile(p[:-4] + ".json"):
+        os.remove(p[:-4] + ".json")
+    return {"deleted": os.path.basename(p)}
 
 
 @app.websocket("/ws/stream")
