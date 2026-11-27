@@ -78,6 +78,36 @@ class Hub:
             self.win.clear()
         return out
 
+    def _settings(self):
+        if not self.src or not hasattr(self.src, "settings"):
+            raise RuntimeError("not connected or settings not supported for this source")
+        return self.src.settings()
+
+    def _apply(self, body):
+        if not self.src or not hasattr(self.src, "apply"):
+            raise RuntimeError("not connected or settings not supported for this source")
+        out = self.src.apply(body)
+        self.win.clear()
+        return out
+
+    def _history(self, seconds, bins):
+        """Last `seconds` of valid readings, reduced to `bins` buckets of {t, min, max, mean} (for chart prefill)."""
+        if not self.buf:
+            return []
+        t_end = self.buf[-1][0]
+        pts = [(t, v) for t, v in self.buf if t >= t_end - seconds]
+        if not pts:
+            return []
+        w = max(seconds / bins, 1e-6); out, cur, k = [], [], None
+        for t, v in pts:
+            b = int((t - (t_end - seconds)) / w)
+            if k is not None and b != k and cur:
+                out.append({"t": t_end - seconds + (k + 0.5) * w, "min": min(cur), "max": max(cur), "mean": sum(cur) / len(cur)}); cur = []
+            k = b; cur.append(v)
+        if cur:
+            out.append({"t": t_end - seconds + (k + 0.5) * w, "min": min(cur), "max": max(cur), "mean": sum(cur) / len(cur)})
+        return out
+
     def _start_rec(self):
         if self.rec:
             return self.state()

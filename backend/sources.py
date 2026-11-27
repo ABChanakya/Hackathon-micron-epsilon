@@ -5,6 +5,23 @@
 import math, os, random, re, time
 
 
+SERIAL_OPTIONS = {"rate_khz": [0.25, 0.5, 1, 2, 4, 8],
+                  "averaging": {"NONE": [], "MOVING": [2, 4, 8, 16, 32, 64, 128],
+                                "RECURSIVE": "2..32767", "MEDIAN": [3, 5, 7, 9]}}
+
+
+def _check_avg(a):
+    mode = str(a.get("mode", "NONE")).upper()
+    if mode == "NONE":
+        return {"mode": "NONE", "depth": None}
+    depth = int(a.get("depth", 0))
+    ok = {"MOVING": depth in (2, 4, 8, 16, 32, 64, 128), "RECURSIVE": 2 <= depth <= 32767,
+          "MEDIAN": depth in (3, 5, 7, 9)}.get(mode)
+    if not ok:
+        raise RuntimeError(f"invalid averaging {mode} {depth}; options: {SERIAL_OPTIONS['averaging']}")
+    return {"mode": mode, "depth": depth}
+
+
 class SimSource:
     """Fake sensor: sine + noise. Lets the UI be built and demoed without hardware."""
     kind = "sim"
@@ -36,6 +53,18 @@ class SimSource:
         if cmd == "Set_Samplerate" and "SP_Measrate" in params:
             self.rate_hz = float(params["SP_Measrate"]) * 1000.0  # kHz like the real SP_Measrate
         return "OK (simulated)"
+
+    def settings(self):
+        return {"rate_khz": self.rate_hz / 1000.0, "averaging": self.avg, "options": SERIAL_OPTIONS}
+
+    def apply(self, body):
+        if "rate_khz" in body:
+            self.rate_hz = float(body["rate_khz"]) * 1000.0
+        if "averaging" in body:
+            self.avg = _check_avg(body["averaging"])
+        return self.settings()
+
+    avg = {"mode": "MEDIAN", "depth": 9}
 
 
 class MedaqSource:
@@ -186,6 +215,9 @@ class SerialSource:
             mo = re.search(r"OUTPUT\s+(\w+)", self._ascii("OUTPUT"))   # remember the output mode to restore on close
             prev = mo.group(1) if mo else "ANALOG"
             self.restore = cfg.get("restore_output") or ("ANALOG" if prev == "RS422" else prev)
+            if prev == "RS422":                                    # stream active: silence it so PRINT is clean text
+                self._ascii("OUTPUT ANALOG"); _t.sleep(0.2); self.ser.reset_input_buffer(); self.buf.clear()
+            self.snapshot = dict(re.findall(r"^(\w+)[ \t]+(.*?)\s*$", self._ascii("PRINT", wait=2.0), re.M))
             self._ascii("OUTPUT RS422")
             mr = re.search(r"MEASRATE\s+([\d.]+)", self._ascii("MEASRATE"))
             if mr:
@@ -232,12 +264,32 @@ class SerialSource:
             raise RuntimeError("no data from sensor for 3 s (output not RS422, cable or power?)")
         return out
 
+    def settings(self):
+        sn = getattr(self, "snapshot", {})            # PRINT is read once while the sensor is idle; kept in sync by apply()
+        a = sn.get("AVERAGE", "NONE").split()
+        avg = {"mode": a[0], "depth": int(a[1]) if len(a) > 1 else None}
+        return {"rate_khz": self.rate_hz / 1000.0, "averaging": avg, "options": SERIAL_OPTIONS, "raw": sn}
+
+    def apply(self, body):
+        if "rate_khz" in body:
+            self.command("Set_Samplerate", {"SP_Measrate": body["rate_khz"]})
+        if "averaging" in body:
+            a = _check_avg(body["averaging"])
+            line = "AVERAGE NONE" if a["mode"] == "NONE" else f"AVERAGE {a['mode']} {a['depth']}"
+            ans = self._ascii(line)
+            if re.match(r"E\d+", ans):
+                raise RuntimeError(ans)
+            self.snapshot["AVERAGE"] = line[8:]
+        return self.settings()
+
     def command(self, cmd, params):
         if cmd == "Set_Samplerate":
             khz = float(params.get("SP_Measrate"))
             if khz not in self.MEASRATES:
                 raise RuntimeError(f"MEASRATE must be one of {self.MEASRATES} kHz")
             ans = self._ascii(f"MEASRATE {khz:g}")
+            if re.match(r"E\d+", ans):
+                raise RuntimeError(ans)
             self.rate_hz = khz * 1000.0
             return ans or "OK"
         line = cmd if not params or "args" not in params else f"{cmd} {params['args']}"

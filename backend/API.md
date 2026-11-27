@@ -33,6 +33,9 @@ Returned by `/api/status`, `/api/connect`, `/api/disconnect`, `/api/record/*`.
 | `POST /api/connect` | `{sensor, interface?, port?, baudrate?, ip?}` | State | Open a sensor (closes any previous one) |
 | `POST /api/disconnect` | – | State | Close sensor, stop any recording |
 | `POST /api/config` | `{"rate_khz": 4.0}` | `{answer}` | Change sample rate (see unit warning) |
+| `GET /api/settings` | – | `{rate_khz, averaging:{mode,depth}, options, raw?}` | Current settings and the allowed choices (for building dropdowns). `raw` = all sensor settings (ILD1420 only) |
+| `POST /api/settings` | any subset of `{rate_khz, averaging:{mode, depth}}` | the new settings | Change settings. Invalid choices return HTTP 400 |
+| `GET /api/history?seconds=10&bins=300` | – | `[{t, min, max, mean}]` | Recent valid readings in time buckets, to prefill the chart on page load. Empty if no valid data |
 | `POST /api/command` | `{cmd, params?}` | `{answer}` | Raw MEDAQLib sensor command |
 | `POST /api/record/start` | – | State | Start writing a CSV |
 | `POST /api/record/stop` | – | State | Stop and close the CSV |
@@ -69,6 +72,12 @@ Sets each parameter, then runs the command. For `ILD1420-serial` the command is 
 For MEDAQLib sensors parameters are typed by JSON type: integer or boolean → int,
 number with decimals → double, anything else → string. For a real sensor `answer` is the full MEDAQLib
 parameter dump. Useful for the "run `Get_Setup`, change a setting in sensorTOOL, run it again, diff" trick.
+
+### Settings details
+`averaging.mode`: `NONE` (no depth), `MOVING` (2, 4, 8, 16, 32, 64, 128), `RECURSIVE` (2–32767), `MEDIAN` (3, 5, 7, 9).
+`rate_khz`: 0.25, 0.5, 1, 2, 4, 8. Both come back under `options`, so the UI should build its controls from `options`.
+For `ILD1420-serial` the settings are read once at connect and then tracked, so changes made elsewhere (sensorTOOL,
+web interface) during a session are not seen. Settings are not saved on the sensor: it reverts after a power cycle.
 
 ## WebSocket `/ws/stream`
 Server → client only. The client can ignore anything it sends. Frame (~25/s while streaming):

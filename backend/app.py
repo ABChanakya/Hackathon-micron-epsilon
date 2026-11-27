@@ -73,6 +73,22 @@ async def config(body: dict):
     raise HTTPException(400, "unknown config key; use /api/command for raw commands")
 
 
+@app.get("/api/settings")
+async def get_settings():
+    return await _do("_settings")
+
+
+@app.post("/api/settings")
+async def set_settings(body: dict):
+    """{"rate_khz": 4, "averaging": {"mode": "MEDIAN", "depth": 9}} - any subset. Returns the new settings."""
+    return await _do("_apply", body)
+
+
+@app.get("/api/history")
+async def history(seconds: float = 10, bins: int = 300):
+    return await _do("_history", min(max(seconds, 0.1), 300), min(max(bins, 10), 2000))
+
+
 @app.post("/api/record/start")
 async def rec_start():
     return await _do("_start_rec")
