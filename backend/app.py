@@ -38,8 +38,11 @@ async def _do(fn, *a):
 
 @app.get("/api/sensors/scan")
 def scan():
-    # TODO real discovery (see software/MEDAQLib_samples/sample_findMET.py). For now: simulator + manual entry.
-    return [{"sensor": "SIM", "model": "SIM-ILD1420", "interface": "virtual", "port": None, "serial": "SIM-0001"}]
+    # Simulator + any USB-serial ports (candidates for sensor "ILD1420-serial"; not probed until you connect).
+    import glob
+    ports = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*"))
+    return [{"sensor": "SIM", "model": "SIM-ILD1420", "interface": "virtual", "port": None, "serial": "SIM-0001"}] + \
+           [{"sensor": "ILD1420-serial", "model": "serial port (unverified)", "interface": "serial", "port": p, "serial": None} for p in ports]
 
 
 @app.post("/api/connect")

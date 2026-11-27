@@ -42,27 +42,31 @@ Returned by `/api/status`, `/api/connect`, `/api/disconnect`, `/api/record/*`.
 ### `POST /api/connect`
 | Field | Example | Notes |
 |---|---|---|
-| `sensor` | `"SIM"`, `"ILD1420"`, `"ILD5500"`, `"ME-Bus"` | `SIM` or a MEDAQLib sensor name |
+| `sensor` | `"SIM"`, **`"ILD1420-serial"`**, `"ILD1420"`, `"ILD5500"`, `"ME-Bus"` | `SIM`; `ILD1420-serial` = direct serial protocol, **works on macOS and is verified on real hardware**; others go through MEDAQLib (Windows/Linux, untested) |
 | `interface` | `"RS232"`, `"TCP/IP"`, `"IF2004_USB"` | USB-RS422 converters (IF2001) use `"RS232"` |
-| `port` | `"COM25"` | Serial interfaces. Linux/macOS names such as `/dev/ttyUSB0` are untested |
+| `port` | `"COM25"`, `"/dev/cu.usbserial-000101"` | Serial. For `ILD1420-serial` the baudrate defaults to 921600 |
 | `baudrate` | `115200` | Serial only |
 | `ip` | `"169.254.168.150"` | `TCP/IP`; sent as `IP_RemoteAddr`, required in that case |
 
 Examples:
 ```json
 {"sensor": "SIM"}
+{"sensor": "ILD1420-serial", "port": "/dev/cu.usbserial-000101"}
 {"sensor": "ILD1420", "interface": "RS232", "port": "COM25", "baudrate": 115200}
 {"sensor": "ILD5500", "interface": "TCP/IP", "ip": "169.254.168.150"}
 ```
 
 ### `POST /api/config`
-`{"rate_khz": 4.0}` sets `SP_Measrate` and runs `Set_Samplerate`.
-**Unit warning:** the value is passed through unchanged. Some sensors expect **Hz** (e.g. 20–2000), others **kHz**
-(MEDAQLib.pdf p.160 vs p.1355). It must be checked per sensor model before the UI exposes a rate control.
+`{"rate_khz": 4.0}`. Unit is **kHz**. For `ILD1420-serial` the allowed values are `0.25, 0.5, 1, 2, 4, 8`
+(anything else returns HTTP 400); verified on hardware. For MEDAQLib sensors the value is passed through
+unchanged as `SP_Measrate`, and some sensors expect Hz instead (MEDAQLib.pdf p.160 vs p.1355), so check per model.
 
 ### `POST /api/command`
 `{"cmd": "Get_Setup", "params": {"SP_Measrate": 4.0}}`
-Sets each parameter, then runs the command. Parameters are typed by JSON type: integer or boolean → int,
+Sets each parameter, then runs the command. For `ILD1420-serial` the command is a raw ASCII command of the sensor and `params.args` is appended, e.g.
+`{"cmd": "AVERAGE", "params": {"args": "MEDIAN 9"}}` (set) or `{"cmd": "AVERAGE"}` (query → `"AVERAGE MEDIAN 9"`),
+`{"cmd": "GETINFO"}`, `{"cmd": "PRINT"}`. **These change real sensor settings** (volatile until saved on the sensor).
+For MEDAQLib sensors parameters are typed by JSON type: integer or boolean → int,
 number with decimals → double, anything else → string. For a real sensor `answer` is the full MEDAQLib
 parameter dump. Useful for the "run `Get_Setup`, change a setting in sensorTOOL, run it again, diff" trick.
 
@@ -94,9 +98,16 @@ The stream carries no frames while `status` is not `streaming`. Poll `/api/statu
 CSV with header `t_s,value`. `t_s` is the same monotonic clock as `t`. An invalid reading is written as `ERR<code>`
 (for example `ERR4`) instead of a number. Files are in `backend/recordings/`.
 
+## Real sensor notes (`ILD1420-serial`, tested on an ILD1420-50)
+- On connect the backend reads `GETINFO` (model, serial, range, firmware) into `info`, remembers the sensor's current
+  `OUTPUT` mode, and switches it to `RS422` to start the stream. **This turns the 4-20 mA analog output off.**
+  On disconnect it restores the previous mode (`ANALOG` if it was already `RS422`, or `restore_output` from the connect body).
+- `value` is the distance in **mm from the start of the measuring range** (0 to range_mm, slightly beyond is possible).
+  The conversion follows the manual (p.85); it has not been checked against a reference distance yet.
+- No target in range yields errors (`last_error`: 5/6 "peak before/after range", 4 "no peak", 10 "laser off") and `value: null`.
+- The stream stops with `status: "error"` if no data arrives for 3 s.
+
 ## Not built yet (do not design UI around these)
-- Real sensor discovery (`/api/sensors/scan` returns only the simulator).
-- Real model, serial and measuring-range info for physical sensors.
-- Multi-sensor mode (several sensors in one stream).
-- Verified rate units, and verified serial port names on Linux/macOS.
-- Real-sensor connection has **not been tested** (the MEDAQLib DLL is Windows-only; Linux `.so` is separate).
+- Real discovery. `/api/sensors/scan` returns the simulator plus USB serial ports it finds; ports are not probed.
+- Multi-sensor mode (several sensors in one stream), additional output values (video, intensity, exposure time).
+- MEDAQLib sensors (`ILD1420`, `ILD5500`, ...) are untested: the MEDAQLib DLL is Windows-only.

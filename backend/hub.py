@@ -4,7 +4,7 @@ from collections import deque
 from concurrent.futures import Future
 from datetime import datetime
 
-from sources import MedaqSource, SimSource
+from sources import MedaqSource, SerialSource, SimSource
 
 REC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
 FRAME_S = 0.04          # UI frame interval (25 fps) - decimation: raw kHz stream never reaches the browser
@@ -49,7 +49,8 @@ class Hub:
     # ---- sensor thread ----------------------------------------------------------------
     def _connect(self, cfg):
         self._disconnect()
-        self.src = SimSource() if cfg.get("sensor", "SIM") == "SIM" else MedaqSource()
+        name = cfg.get("sensor", "SIM")
+        self.src = SimSource() if name == "SIM" else SerialSource() if name.endswith("-serial") else MedaqSource()
         try:
             self.src.open(cfg)
         except Exception as e:
@@ -142,7 +143,7 @@ class Hub:
                 nan = ys[-1] != ys[-1]
                 frame = {"t": now, "value": None if nan else ys[-1], "min": None if nan else min(ys), "max": None if nan else max(ys),
                          "mean": None if nan else sum(ys) / len(ys),
-                         "n": len(ys), "errors_in_window": bad, "last_error": self.last_err, "rate_hz": round(self.rate_meas), "status": self.status,
+                         "n": 0 if nan else len(ys), "errors_in_window": bad, "last_error": self.last_err, "rate_hz": round(self.rate_meas), "status": self.status,
                          "recording": self.rec is not None, "rec_samples": self.rec_count}
                 if self.loop and self.clients:
                     self.loop.call_soon_threadsafe(self._broadcast, frame)
