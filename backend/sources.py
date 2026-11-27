@@ -518,14 +518,11 @@ class ReplaySource:
         self.info = {}
         self.rate_hz = 0.0
 
-    def open(self, cfg):
-        name = os.path.basename(cfg.get("file") or "")
+    def _load(self, name):
         path = os.path.join(self.rec_dir, name)
         if not name.endswith(".csv") or not os.path.isfile(path):
             raise RuntimeError(f"recording not found: {name!r} (see /api/recordings)")
-        self.speed = float(cfg.get("speed") or 1.0)
-        self.loop = cfg.get("loop", True) is not False
-        self.ts, self.samples = [], []
+        ts, samples = [], []
         with open(path, newline="") as f:
             for row in csv.DictReader(f):
                 try:
@@ -543,22 +540,46 @@ class ReplaySource:
                 for k in EXTRA_KEYS:
                     if row.get(k) not in (None, ""):
                         s[k] = float(row[k]) if k in ("sensor_ts_ms", "intensity_pct", "shutter_us") else int(float(row[k]))
-                self.ts.append(t); self.samples.append(s)
-        if not self.samples:
+                ts.append(t); samples.append(s)
+        if not samples:
             raise RuntimeError(f"recording {name} has no samples")
-        t0 = self.ts[0]
-        self.ts = [t - t0 for t in self.ts]
+        meta = {}
+        if os.path.isfile(path[:-4] + ".json"):
+            with open(path[:-4] + ".json") as f:
+                meta = json.load(f)
+        return ts, samples, meta
+
+    def open(self, cfg):
+        """cfg: file (one recording) or files (a playlist, played back to back), speed, loop."""
+        names = [os.path.basename(n or "") for n in (cfg.get("files") or [cfg.get("file")])]
+        self.speed = float(cfg.get("speed") or 1.0)
+        self.loop = cfg.get("loop", True) is not False
+        self.ts, self.samples, self.segments = [], [], []
+        offset, metas = 0.0, []
+        for name in names:
+            ts, samples, meta = self._load(name)
+            t0 = ts[0]
+            self.segments.append({"file": name, "label": meta.get("label", ""), "start_s": round(offset, 3)})
+            self.ts += [t - t0 + offset for t in ts]
+            self.samples += samples
+            offset = self.ts[-1] + 0.05
+            metas.append(meta)
         dur = self.ts[-1]
         self.rate_hz = (len(self.ts) - 1) / dur if dur > 0 else 1000.0
-        meta = {}
-        side = path[:-4] + ".json"
-        if os.path.isfile(side):
-            with open(side) as f:
-                meta = json.load(f)
-        self.meta = meta
-        self.info = dict(meta.get("info") or {"model": "recording", "unit": "mm"})
-        self.info.update({"replay_of": name, "label": meta.get("label", ""), "duration_s": round(dur, 3)})
+        self.meta = metas[0]
+        self.info = dict(self.meta.get("info") or {"model": "recording", "unit": "mm"})
+        self.info.update({"replay_of": names[0] if len(names) == 1 else names,
+                          "label": self.meta.get("label", "") if len(names) == 1 else f"playlist of {len(names)} recordings",
+                          "duration_s": round(dur, 3)})
         self._start, self._i = time.perf_counter(), 0
+
+    def now_playing(self):
+        el = (time.perf_counter() - self._start) * self.speed
+        cur = self.segments[0]
+        for seg in self.segments:
+            if seg["start_s"] <= el:
+                cur = seg
+        return cur
 
     def close(self):
         pass
@@ -577,7 +598,8 @@ class ReplaySource:
         st = self.meta.get("settings") or {}
         return {"rate_khz": round(self.rate_hz / 1000.0, 3), "averaging": st.get("averaging"),
                 "channels": st.get("channels_active", []), "channels_active": st.get("channels_active", []),
-                "options": {}, "replay": {"file": self.info.get("replay_of"), "speed": self.speed, "loop": self.loop}}
+                "options": {}, "replay": {"file": self.info.get("replay_of"), "speed": self.speed, "loop": self.loop,
+                                          "now_playing": self.now_playing(), "segments": self.segments}}
 
     def apply(self, body):
         if "speed" in body:

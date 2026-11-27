@@ -34,6 +34,7 @@ class ConnectReq(BaseModel):
     channels: list[str] | None = None   # ILD1420-serial / SIM: extra values, e.g. ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]
     restore_output: str | None = None    # ILD1420-serial: OUTPUT mode to set on disconnect
     file: str | None = None              # REPLAY: recording file name (rec_....csv)
+    files: list[str] | None = None       # REPLAY: several recordings played back to back (playlist)
     speed: float = 1.0                   # REPLAY: playback speed
     loop: bool = True                    # REPLAY: restart at the end
 
@@ -206,6 +207,18 @@ async def stream(ws: WebSocket):
             await ws.receive_text()   # keepalive; frames are pushed by the hub
     except WebSocketDisconnect:
         hub.clients.discard(ws)
+
+
+@app.websocket("/ws/bridge")
+async def bridge(ws: WebSocket):
+    """Same data as /ws/stream, in the message format of the sensor-monitor website (frontend/): see API.md."""
+    await ws.accept()
+    hub.bridge_clients.add(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        hub.bridge_clients.discard(ws)
 
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")

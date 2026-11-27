@@ -118,6 +118,35 @@ Server → client only, about 25 frames/s while streaming:
 - `last_error.code`: 3 too much data for baudrate, 4 no peak, 5 peak before range, 6 peak after range, 7 cannot be calculated,
   8 global error, 9 peak too wide, 10 laser off.
 
+## WebSocket `/ws/bridge` (for the sensor-monitor website in `frontend/`)
+The same live data as `/ws/stream`, in the message format that the website's "local sensor bridge" connection expects
+(`frontend/dist/app.js`, function `connectBridge`). In the website, enter `ws://localhost:8000/ws/bridge` as the bridge address.
+About 25 messages per second:
+```json
+{
+  "value": 24.375,            // mm FROM THE SENSOR FACE (not from the start of the range). null = nothing valid right now
+  "unit": "mm",
+  "sensor": "ILD1900",        // the real model name from the sensor
+  "state": "green",           // status LED: green | yellow | red | off | unknown
+  "output": "green",          // output LED: "green" while the RS422 stream runs
+  "serial": "00323100070",
+  "range_start": 20, "range_end": 30, "range": 10,   // measuring window in mm from the face, from the connected sensor
+  "rate_hz": 4000, "intensity": 46.1, "dropped_total": 0, "t": 15615.1,
+  "error": null               // text such as "no peak/edge" when value is null
+}
+```
+- `value` is the latest reading (the tare is **not** applied: the website has its own zero). Messages with `value: null` are sent
+  while nothing is in range, so that a UI can show "no target" with the reason in `error`. The current website ignores them.
+- The first five fields are exactly what the website reads today. The rest is extra, for UIs that adapt to the sensor.
+- A browser page served over `https://` may refuse `ws://localhost` (Safari does). Open the website over `http://` locally.
+
+**What the website must change before it can show our sensors** (not done, it is the UI team's code):
+1. `frontend/dist/data.js` fixes the sensor as `optoNCDT 1420-25`, range 25-50 mm (`SENSOR`), and `connectBridge` rejects every
+   message with a different `sensor` or a `value` outside 25-50 mm. Our sensors are an ILD1420-50 (35-85 mm) and an ILD1900-10
+   (20-30 mm). Read `sensor`, `range_start`, `range_end` and `range` from the first message and use them instead of the constants.
+2. `connectBridge` shows "no valid values" after 8 s without a finite `value`. With a target out of range that is the normal case:
+   treat `value: null` as "no target" (show `error`), not as a lost connection.
+
 ## Recordings
 `backend/recordings/rec_YYYYMMDD_HHMMSS.csv`, with one row per sensor sample:
 

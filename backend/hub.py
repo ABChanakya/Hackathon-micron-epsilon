@@ -44,6 +44,7 @@ class Hub:
     def __init__(self):
         self.cmds = queue.Queue()
         self.clients = set()
+        self.bridge_clients = set()        # /ws/bridge: sensor-monitor website format
         self.loop = None
         self.status = "disconnected"       # disconnected | streaming | error
         self.error = ""
@@ -292,18 +293,40 @@ class Hub:
                          "intensity": round(self.int_sum / self.int_n, 2) if self.int_n else None,
                          "shutter_us": lt.get("shutter_us"), "counter": lt.get("counter"),
                          "sensor_ts_ms": lt.get("sensor_ts_ms"), "state": lt.get("state"),
-                         "state_flags": state_flags(lt.get("state")), "dropped_total": self.dropped_total}
+                         "state_flags": state_flags(lt.get("state")), "dropped_total": self.dropped_total,
+                         "current_valid": lt.get("dist", ERR_BASE) > -1e9}
                 self.int_sum, self.int_n = 0.0, 0
                 self.last_frame = frame
-                if self.loop and self.clients:
-                    self.loop.call_soon_threadsafe(self._broadcast, frame)
+                if self.loop and (self.clients or self.bridge_clients):
+                    self.loop.call_soon_threadsafe(self._broadcast, frame, self.bridge_message(frame))
 
-    def _broadcast(self, frame):
+    LEDS = ("green", "yellow", "red", "off")
+
+    def bridge_message(self, f):
+        """The message format of the sensor-monitor website's 'local sensor bridge' (frontend/dist/app.js connectBridge):
+        value (mm from the sensor face), unit, sensor, state (status LED) and output (output LED). The UI ignores messages
+        without a finite value, so no-target frames are sent with value null and are harmless. The extra fields let a
+        UI adapt to the connected sensor instead of hardcoding one."""
+        info = getattr(self.src, "info", None) or {}
+        smr, rng = info.get("smr_mm"), info.get("range_mm")
+        led = (f.get("state_flags") or {}).get("led")
+        valid = f.get("current_valid") and f.get("dist_from_face_mm") is not None
+        return {"value": round(f["dist_from_face_mm"], 4) if valid else None, "unit": "mm", "sensor": info.get("model"),
+                "state": led if led in self.LEDS else "unknown",
+                "output": "green" if f.get("status") == "streaming" else "unknown",
+                "serial": info.get("serial"), "range_start": smr, "range_end": None if smr is None or rng is None else smr + rng,
+                "range": rng, "rate_hz": f.get("rate_hz"), "intensity": f.get("intensity"),
+                "error": None if valid else (f.get("last_error") or {}).get("text") or "no valid reading",
+                "dropped_total": f.get("dropped_total"), "t": f.get("t")}
+
+    def _broadcast(self, frame, bridge_msg):
         for ws in list(self.clients):
-            asyncio.ensure_future(self._send(ws, frame))
+            asyncio.ensure_future(self._send(ws, frame, self.clients))
+        for ws in list(self.bridge_clients):
+            asyncio.ensure_future(self._send(ws, bridge_msg, self.bridge_clients))
 
-    async def _send(self, ws, frame):
+    async def _send(self, ws, payload, group):
         try:
-            await ws.send_json(frame)
+            await ws.send_json(payload)
         except Exception:
-            self.clients.discard(ws)
+            group.discard(ws)
