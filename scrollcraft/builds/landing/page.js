@@ -142,6 +142,7 @@
     live.timer = setTimeout(function () { if (!live.got) stopLive(t('live_fail')); }, 3000);
     live.ws.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.unit && m.unit !== 'mm') { stopLive(t('live_other', { unit: m.unit })); return; }
       if (m.unit !== 'mm') return;
       if (!live.got) { live.got = true; clearTimeout(live.timer); status.textContent = ''; }
       live.info = { model: m.sensor, source: m.source };

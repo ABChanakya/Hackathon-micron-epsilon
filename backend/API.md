@@ -11,6 +11,7 @@ All bodies are JSON. Errors come back as HTTP 400 `{"detail": "<message>"}`, wit
     Verified on an ILD1420-50 and an ILD1900-10, and it works on macOS.
   - `REPLAY`: plays back a recording.
   - MEDAQLib sensor names: Windows/Linux only, untested.
+  - `thermo`: a thermoMETER UC infrared thermometer over ME-Bus (its 3.3 V TTL USB cable). Verified on a UC-SF22-S3.
 - The raw stream (up to 4 kHz) is reduced to **~25 frames/s** for the browser.
 - Invalid readings never appear as values. They are counted (`errors_in_window`) and described (`last_error`).
 - All distances are in **mm from the start of the measuring range**. `dist_from_face_mm` adds the start of the
@@ -118,14 +119,33 @@ Server → client only, about 25 frames/s while streaming:
 - `last_error.code`: 3 too much data for baudrate, 4 no peak, 5 peak before range, 6 peak after range, 7 cannot be calculated,
   8 global error, 9 peak too wide, 10 laser off.
 
+## Thermometer (`thermo`, thermoMETER UC over ME-Bus)
+Connect: `{"sensor": "thermo", "port": "/dev/cu.usbserial-FTA3RQ8E"}` (optional `"address": 126`, `"baudrate": 115200`).
+`info` is `{"model": "UC-SF22-S3", "unit": "°C", "range_min": -50, "range_max": 900, "channels": {...}}`.
+
+- The WebSocket frame is the same as for distance sensors, in °C: `value`, `min`, `max`, `mean`, `raw_value` (latest
+  reading, no tare), `unit: "°C"`, plus `head_c` (sensor head) and `electronics_c` (electronics) temperatures.
+  `dist_from_face_mm`, `intensity`, `state_flags` and `shutter_us` are null. About 55 readings per second.
+- `dropped_total` counts readings lost between sensor and computer (from the sensor's own 16-bit sample counter).
+- Recordings: CSV columns `t_s, wall_time, temp_c, error_code, counter, head_c, electronics_c`; the sidecar has `"unit": "°C"`
+  (its `min_mm`, `max_mm`, `mean_mm` are then in °C). Replay works the same way.
+- Settings are **read-only**: `POST /api/settings` and `/api/command` return HTTP 400. Emissivity and averaging stay as set on the sensor.
+- The protocol (PROFIBUS-style FDL telegrams at 115200 baud, 8E1) was taken from MEDAQLib's trace log in
+  `software/MEDAQLib_samples/` and verified on the sensor; details in `ThermoSource` in `sources.py`. The channel names come
+  from that log; that channel 2 is the sensor head and channel 3 the electronics follows MEDAQLib's order and is not otherwise confirmed.
+
+## Browser access (CORS)
+Pages on `localhost` or `127.0.0.1` (any port) may call the API, so the monitor website and the landing page can read
+`/api/status`. Other sites are refused.
+
 ## WebSocket `/ws/bridge` (for the sensor-monitor website in `frontend/`)
 The same live data as `/ws/stream`, in the message format that the website's "local sensor bridge" connection expects
 (`frontend/dist/app.js`, function `connectBridge`). In the website, enter `ws://localhost:8000/ws/bridge` as the bridge address.
 About 25 messages per second:
 ```json
 {
-  "value": 24.375,            // mm FROM THE SENSOR FACE (not from the start of the range). null = nothing valid right now
-  "unit": "mm",
+  "value": 24.375,            // distance sensors: mm FROM THE SENSOR FACE; thermometer: °C. null = nothing valid right now
+  "unit": "mm",               // "°C" for the thermometer
   "sensor": "ILD1900",        // the real model name from the sensor
   "state": "green",           // status LED: green | yellow | red | off | unknown
   "output": "green",          // output LED: "green" while the RS422 stream runs

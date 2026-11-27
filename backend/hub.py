@@ -4,7 +4,7 @@ from collections import deque
 from concurrent.futures import Future
 from datetime import datetime
 
-from sources import ERR_BASE, MedaqSource, ReplaySource, SerialSource, SimSource
+from sources import ERR_BASE, MedaqSource, ReplaySource, SerialSource, SimSource, ThermoSource
 
 REC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
 FRAME_S = 0.04          # UI frame interval (25 fps) - decimation: raw kHz stream never reaches the browser
@@ -12,7 +12,8 @@ WINDOW_S = 1.0          # stats window
 ERR_NAMES = {1: "scaling underflow", 2: "scaling overflow", 3: "too much data for baudrate", 4: "no peak/edge",
              5: "peak before range", 6: "peak after range", 7: "cannot be calculated", 8: "global error",
              9: "peak too wide", 10: "laser off"}
-CSV_COLS = ["t_s", "wall_time", "dist_mm", "error_code", "counter", "sensor_ts_ms", "intensity_pct", "shutter_us", "state"]
+DIST_EXTRAS = ("counter", "sensor_ts_ms", "intensity_pct", "shutter_us", "state")
+FLOAT_FMT = {"sensor_ts_ms": 2, "intensity_pct": 2, "shutter_us": 1, "head_c": 3, "electronics_c": 3}
 LED = {0: "off", 1: "green", 2: "red", 3: "yellow"}
 
 
@@ -94,6 +95,8 @@ class Hub:
             self.src = SimSource()
         elif name == "REPLAY":
             self.src = ReplaySource(REC_DIR)
+        elif name.lower().startswith("thermo"):
+            self.src = ThermoSource()
         elif name.endswith("-serial"):
             self.src = SerialSource()
         else:
@@ -166,7 +169,10 @@ class Hub:
         os.makedirs(REC_DIR, exist_ok=True)
         self.rec_path = os.path.join(REC_DIR, datetime.now().strftime("rec_%Y%m%d_%H%M%S.csv"))
         self.rec = open(self.rec_path, "w", newline="")
-        self.rec_w = csv.writer(self.rec); self.rec_w.writerow(CSV_COLS); self.rec_count = 0
+        unit = (self.src.info or {}).get("unit", "mm")
+        self.rec_extras = tuple(getattr(self.src, "CSV_EXTRAS", DIST_EXTRAS))
+        cols = ["t_s", "wall_time", "temp_c" if unit == "°C" else "dist_mm", "error_code", *self.rec_extras]
+        self.rec_w = csv.writer(self.rec); self.rec_w.writerow(cols); self.rec_count = 0
         settings = None
         try:
             settings = {k: v for k, v in self.src.settings().items() if k not in ("options", "raw")}
@@ -174,6 +180,7 @@ class Hub:
             pass
         self.rec_meta = {"file": os.path.basename(self.rec_path), "label": label or "", "notes": notes or "",
                          "source": self.src.kind, "info": self.src.info, "settings": settings,
+                         "unit": (self.src.info or {}).get("unit", "mm"),   # min_mm/max_mm/mean_mm are in this unit
                          "tare_mm": self.tare, "started": datetime.now().isoformat(timespec="seconds"),
                          "stopped": None, "duration_s": None, "samples": 0, "valid": 0, "errors": 0,
                          "errors_by_code": {}, "dropped": 0, "min_mm": None, "max_mm": None, "mean_mm": None,
@@ -202,8 +209,7 @@ class Hub:
     def _record(self, t, s, dist, code):
         m, st = self.rec_meta, self._rec_stats
         self.rec_w.writerow([f"{t:.6f}", f"{self.wall_off + t:.6f}", _fmt(dist), "" if code is None else code,
-                             _fmt(s.get("counter")), _fmt(s.get("sensor_ts_ms"), 2), _fmt(s.get("intensity_pct"), 2),
-                             _fmt(s.get("shutter_us"), 1), _fmt(s.get("state"))])
+                             *(_fmt(s.get(k), FLOAT_FMT.get(k, 6)) for k in self.rec_extras)])
         self.rec_count += 1; m["samples"] += 1
         if st["t0"] is None:
             st["t0"] = t
@@ -245,10 +251,11 @@ class Hub:
                     t = now - (len(samples) - 1 - i) * dt
                     v = s["dist"]
                     c = s.get("counter")
-                    if c is not None:
+                    if c is not None and getattr(self.src, "kind", "") != "replay":   # a replay's gaps are old, and its loop restarts the counter
                         if self.last_counter is not None:
-                            gap = (c - self.last_counter - 1) % 262144     # 18-bit counter wraps
-                            if 0 < gap < 100000:
+                            mod = getattr(self.src, "counter_mod", 262144)   # ILD: 18-bit, thermoMETER: 16-bit
+                            gap = (c - self.last_counter - 1) % mod
+                            if 0 < gap < mod // 2:
                                 self.dropped_total += gap
                         self.last_counter = c
                     if "intensity_pct" in s:
@@ -294,7 +301,10 @@ class Hub:
                          "shutter_us": lt.get("shutter_us"), "counter": lt.get("counter"),
                          "sensor_ts_ms": lt.get("sensor_ts_ms"), "state": lt.get("state"),
                          "state_flags": state_flags(lt.get("state")), "dropped_total": self.dropped_total,
-                         "current_valid": lt.get("dist", ERR_BASE) > -1e9}
+                         "current_valid": lt.get("dist", ERR_BASE) > -1e9,
+                         "unit": (getattr(self.src, "info", {}) or {}).get("unit", "mm"),
+                         "raw_value": last_valid,                       # latest valid reading, tare NOT applied
+                         "head_c": lt.get("head_c"), "electronics_c": lt.get("electronics_c")}
                 self.int_sum, self.int_n = 0.0, 0
                 self.last_frame = frame
                 if self.loop and (self.clients or self.bridge_clients):
@@ -310,8 +320,10 @@ class Hub:
         info = getattr(self.src, "info", None) or {}
         smr, rng = info.get("smr_mm"), info.get("range_mm")
         led = (f.get("state_flags") or {}).get("led")
-        valid = f.get("current_valid") and f.get("dist_from_face_mm") is not None
-        return {"value": round(f["dist_from_face_mm"], 4) if valid else None, "unit": "mm", "sensor": info.get("model"),
+        unit = info.get("unit", "mm")
+        reading = f.get("dist_from_face_mm") if unit == "mm" else f.get("raw_value")   # distance: from the sensor face
+        valid = f.get("current_valid") and reading is not None
+        return {"value": round(reading, 4) if valid else None, "unit": unit, "sensor": info.get("model"),
                 "state": led if led in self.LEDS else "unknown",
                 "output": "green" if f.get("status") == "streaming" else "unknown",
                 "source": getattr(self.src, "kind", None),   # e.g. serial-ild1900 (live) or replay

@@ -252,3 +252,45 @@ test('only live backend status for the 10 mm ILD1900 can identify the input sens
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, unit: 'inch' } }), false);
   assert.equal(engine.matchesBackendSensor({ ...status, source: 'replay' }), true);
 });
+
+test('the backend status selects the thermoMETER and the monitor switches unit, range and profiles', () => {
+  const thermoStatus = {
+    status: 'streaming', source: 'thermo-uc',
+    info: { model: 'UC-SF22-S3', name: 'thermoMETER UC', unit: '°C', range_min: -50, range_max: 900 },
+  };
+  try {
+    assert.equal(engine.sensorFromStatus(thermoStatus), 'thermo_uc');
+    assert.equal(engine.matchesBackendSensor(thermoStatus), true);
+    assert.equal(engine.sensorFromStatus({ ...thermoStatus, info: { ...thermoStatus.info, unit: 'mm' } }), null);
+
+    const before = engine.createInitialState();
+    assert.ok(engine.useSensor('thermo_uc', thermoStatus.info));
+    assert.equal(engine.SENSOR.unit, '°C');
+    assert.equal(engine.SENSOR.model, 'thermoMETER UC-SF22-S3');
+    assert.deepEqual([engine.SENSOR.rangeStart, engine.SENSOR.rangeEnd], [-50, 900]);
+
+    const switched = engine.adoptSensor(before);
+    assert.equal(switched.sensorModel, 'thermoMETER UC-SF22-S3');
+    assert.ok(switched.profiles.every(p => p.unit === '°C'));
+    assert.equal(switched.recordings.length, before.recordings.length);      // recordings are kept
+    assert.equal(engine.unitOf(before.recordings[0]), 'mm');               // and keep their own unit
+
+    // real backend frames: the temperature is raw_value; there is no LED and no distance from the face
+    const frame = { status: 'streaming', n: 52, value: 31.85, raw_value: 31.85, dist_from_face_mm: null, unit: '°C', state_flags: null };
+    assert.deepEqual(engine.parseBridgeSample(frame), { error: 'unverified' });
+    assert.deepEqual(engine.parseBridgeSample(frame, true), { value: 31.85, led: { state: 'unknown', output: 'unknown' } });
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, raw_value: null, n: 0 }, true), { error: 'signal' });
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, raw_value: 950 }, true), { error: 'range' });
+    // the simple bridge format in °C
+    assert.deepEqual(engine.parseBridgeSample({ value: 24.1, unit: '°C', sensor: 'UC-SF22-S3' }), { value: 24.1, led: { state: 'unknown', output: 'unknown' } });
+    assert.equal(engine.parseBridgeSample({ value: 24.1, unit: 'mm' }), null);
+
+    // switching back restores the distance profiles that were shelved
+    assert.ok(engine.useSensor('ild1900'));
+    const back = engine.adoptSensor(switched);
+    assert.equal(back.sensorModel, 'optoNCDT 1900-10');
+    assert.deepEqual(back.profiles.map(p => p.id), before.profiles.map(p => p.id));
+  } finally {
+    engine.useSensor('ild1900');
+  }
+});

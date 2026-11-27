@@ -1,6 +1,7 @@
 """Run:  uvicorn app:app --port 8000   (from this folder)   ->  http://localhost:8000"""
 import asyncio, csv, glob, json, os
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -8,6 +9,10 @@ from pydantic import BaseModel
 import hub as hubmod
 
 app = FastAPI(title="Micro-Epsilon sensor backend")
+# The monitor website and the landing page run on their own local ports and read /api/status, so allow
+# requests from local pages only (any port on localhost / 127.0.0.1), never from other sites.
+app.add_middleware(CORSMiddleware, allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+                   allow_methods=["*"], allow_headers=["*"])
 hub = hubmod.Hub()
 
 
@@ -31,6 +36,7 @@ class ConnectReq(BaseModel):
     port: str | None = None        # COM25 or /dev/ttyUSB0
     baudrate: int | None = None
     ip: str | None = None
+    address: int | None = None          # thermo: ME-Bus address (default 126)
     channels: list[str] | None = None   # ILD1420-serial / SIM: extra values, e.g. ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]
     restore_output: str | None = None    # ILD1420-serial: OUTPUT mode to set on disconnect
     file: str | None = None              # REPLAY: recording file name (rec_....csv)
@@ -68,7 +74,8 @@ def scan():
     # Simulator + USB-serial ports (candidates for "ILD1420-serial"; not probed until you connect) + recordings to replay.
     ports = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*"))
     return [{"sensor": "SIM", "model": "SIM-ILD1420-50", "interface": "virtual", "port": None, "serial": "SIM-0001"}] + \
-           [{"sensor": "ILD1420-serial", "model": "serial port (unverified)", "interface": "serial", "port": p, "serial": None} for p in ports] + \
+           [{"sensor": "ILD-serial", "model": "optoNCDT on serial port (unverified)", "interface": "serial", "port": p, "serial": None} for p in ports] + \
+           [{"sensor": "thermo", "model": "thermoMETER UC on serial port (unverified)", "interface": "ME-Bus", "port": p, "serial": None} for p in ports] + \
            [{"sensor": "REPLAY", "model": "recording", "interface": "file", "file": r["file"], "label": r.get("label", "")}
             for r in recordings()]
 
@@ -167,7 +174,9 @@ def recording_series(name: str, bins: int = 500, channel: str = "dist_mm"):
     pts = []
     with open(p, newline="") as f:
         for row in csv.DictReader(f):
-            col = row.get(channel, row.get("value") if channel == "dist_mm" else None)
+            col = row.get(channel)
+            if col is None and channel == "dist_mm":            # temperature recordings store temp_c, old ones "value"
+                col = row.get("temp_c", row.get("value"))
             if col in (None, "") or col.startswith("ERR"):
                 continue
             try:

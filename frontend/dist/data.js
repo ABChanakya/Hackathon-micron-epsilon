@@ -1,8 +1,53 @@
-export const SENSOR = Object.freeze({
-  model: 'optoNCDT 1900-10', rangeStart: 20, rangeEnd: 30, range: 10, midpoint: 25,
-  rates: [250, 500, 1000, 2000, 4000, 8000, 10000], interface: 'RS422 · IF2001/USB',
-  manual: 'https://www.micro-epsilon.de/fileadmin/download/manuals/man--optoNCDT-1900--de.pdf',
+// The sensors this monitor knows. The active one is chosen from the project backend's /api/status when connecting.
+export const SENSORS = Object.freeze({
+  ild1900: Object.freeze({
+    id: 'ild1900', kind: 'distance', family: 'ild1900', codes: ['ild190010', 'optoncdt190010', '190010'],
+    model: 'optoNCDT 1900-10', rangeStart: 20, rangeEnd: 30, range: 10, midpoint: 25,
+    unit: 'mm', decimals: 3, quantity: 'Abstand',
+    rates: [250, 500, 1000, 2000, 4000, 8000, 10000], interface: 'RS422 · IF2001/USB',
+    manual: 'https://www.micro-epsilon.de/fileadmin/download/manuals/man--optoNCDT-1900--de.pdf',
+    labels: { reading: 'Abstand zum Objekt', relative: 'Relativer Abstand', chart: 'Abstand in Millimetern',
+      rangeNote: 'Abstand zur Sensorfront.', outOfRange: 'Der Abstand liegt außerhalb des Sensorbereichs von',
+      valueWord: 'Abstandswert' },
+  }),
+  thermo_uc: Object.freeze({
+    id: 'thermo_uc', kind: 'temperature', family: 'ucsf', codes: ['ucsf22s3', 'ucsf22', 'thermometeruc'],
+    model: 'thermoMETER UC-SF22-S3', rangeStart: -50, rangeEnd: 900, range: 950, midpoint: 25,
+    unit: '°C', decimals: 2, quantity: 'Temperatur',
+    rates: [50], interface: 'ME-Bus · USB (3,3-V-TTL)', manual: '',
+    labels: { reading: 'Objekttemperatur', relative: 'Relative Temperatur', chart: 'Temperatur in Grad Celsius',
+      rangeNote: 'Objekttemperatur.', outOfRange: 'Die Temperatur liegt außerhalb des Messbereichs von',
+      valueWord: 'Temperaturwert' },
+  }),
 });
+
+// The active sensor. Mutable on purpose: useSensor() switches it in place so every module sees the change.
+export const SENSOR = { ...SENSORS.ild1900 };
+
+export function useSensor(id, info = null) {
+  const base = SENSORS[id];
+  if (!base) return false;
+  for (const key of Object.keys(SENSOR)) delete SENSOR[key];
+  Object.assign(SENSOR, base, { codes: [...base.codes] });
+  if (id === 'thermo_uc' && info) {               // the backend reports the exact model and its measuring range
+    if (typeof info.model === 'string') { SENSOR.model = `thermoMETER ${info.model}`; SENSOR.codes.push(sensorCode(info.model)); }
+    if (finite(info.range_min) && finite(info.range_max)) {
+      Object.assign(SENSOR, { rangeStart: info.range_min, rangeEnd: info.range_max, range: info.range_max - info.range_min });
+    }
+  }
+  return true;
+}
+
+// Which known sensor a backend /api/status describes, or null.
+export function sensorFromStatus(status) {
+  const info = status?.info;
+  if (!info) return null;
+  const code = sensorCode(info.model);
+  if (info.unit === 'mm' && ['ild190010', 'optoncdt190010', 'ild1900'].includes(code) &&
+      info.range_mm === SENSORS.ild1900.range && info.smr_mm === SENSORS.ild1900.rangeStart) return 'ild1900';
+  if (info.unit === '°C' && code.startsWith('ucsf')) return 'thermo_uc';
+  return null;
+}
 
 const STORAGE_KEY = 'micro-epsilon-monitor-v1';
 export const DISPLAY_RATE = 5;
@@ -12,29 +57,27 @@ const finite = value => typeof value === 'number' && Number.isFinite(value);
 const round = value => Math.round(value * 1e6) / 1e6;
 
 const sensorCode = text => typeof text === 'string' ? text.replace(/[^a-z0-9]/gi, '').toLowerCase() : '';
-const exactModel = model => ['ild190010', 'optoncdt190010', '190010'].includes(sensorCode(model));
+const exactModel = model => SENSOR.codes.includes(sensorCode(model));
 const ledColors = new Set(['green', 'yellow', 'red', 'off', 'unknown']);
 const ledColor = color => ledColors.has(color) ? color : 'unknown';
 
 export function matchesBackendSensor(status) {
-  const info = status?.info;
-  return Boolean(info &&
-    (exactModel(info.model) || sensorCode(info.model) === 'ild1900') &&
-    info.range_mm === SENSOR.range && info.smr_mm === SENSOR.rangeStart && info.unit === 'mm');
+  return Boolean(sensorFromStatus(status));
 }
 
 export function parseBridgeSample(payload, verifiedSensor = false) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const native = Object.hasOwn(payload, 'dist_from_face_mm');
   const model = payload.sensor;
-  if (!native && payload.unit !== 'mm') return null;
+  if (!native && payload.unit !== SENSOR.unit) return null;
   if (native && payload.status !== 'streaming') return null;
-  if (model != null && !exactModel(model) && !(native && verifiedSensor && sensorCode(model) === 'ild1900')) {
+  if (model != null && !exactModel(model) && !(native && verifiedSensor && sensorCode(model).startsWith(SENSOR.family))) {
     return { error: 'model' };
   }
   if (native && !verifiedSensor && !exactModel(model)) return { error: 'unverified' };
 
-  const value = native ? payload.dist_from_face_mm : payload.value;
+  // Distance sensors: absolute distance from the sensor face. Temperature: the latest reading (backend raw_value).
+  const value = native ? (SENSOR.kind === 'temperature' ? (payload.raw_value ?? null) : payload.dist_from_face_mm) : payload.value;
   const led = {
     state: ledColor(native ? (payload.state_flags?.led ?? payload.state) : payload.state),
     output: ledColor(payload.output),
@@ -65,37 +108,60 @@ export function makeDemoPoints(duration = 60, offset = 0, phase = 0, target = SE
 function makeProfile(id, name, description, target, tolerance, rate) {
   return {
     id, name, description, target, lower: round(target - tolerance), upper: round(target + tolerance),
-    rate, unit: 'mm', window: 30, learnedLower: round(target - tolerance), learnedUpper: round(target + tolerance),
+    rate, unit: SENSOR.unit, window: 30, learnedLower: round(target - tolerance), learnedUpper: round(target + tolerance),
     version: 1, history: [], learning: true,
   };
 }
 
 export function createInitialState() {
-  const profiles = [
+  const thermo = SENSOR.kind === 'temperature';
+  const profiles = thermo ? [
+    makeProfile('temperature', 'Temperatur prüfen', 'Oberflächentemperatur eines Objekts überwachen.', SENSOR.midpoint, 2, 50),
+    makeProfile('warmup', 'Erwärmung beobachten', 'Den Temperaturverlauf beim Aufwärmen verfolgen.', SENSOR.midpoint + 10, 10, 50),
+  ] : [
     makeProfile('distance', 'Abstand prüfen', 'Abstand zu einer Oberfläche überwachen.', SENSOR.midpoint, 0.05, 4000),
     makeProfile('runout', 'Rundlauf beobachten', 'Kleine Bewegungen und Schwankungen vergleichen.', SENSOR.midpoint, 0.1, 4000),
     makeProfile('position', 'Position kontrollieren', 'Wiederkehrende Bauteilpositionen prüfen.', SENSOR.midpoint + 0.5, 0.15, 1000),
   ];
   const now = Date.now();
-  const recordings = [
+  const recordings = (thermo ? [
+    { name: 'Temperatur · Referenz', duration: 60, offset: 0, phase: 0, ago: 3600000,
+      markers: [{ id: 'reference-marker', t: 14.2, note: 'Raumtemperatur erreicht' }] },
+  ] : [
     { name: 'Abstand · Referenz', duration: 60, offset: 0, phase: 0, ago: 3600000,
       markers: [{ id: 'reference-marker', t: 14.2, note: 'Referenzposition erreicht' }] },
     { name: 'Abstand · Versuch 02', duration: 60, offset: 0.009, phase: 0.35, ago: 1800000,
       markers: [{ id: 'part-marker', t: 18.4, note: 'Bauteil gewechselt' }, { id: 'heat-marker', t: 39.2, note: 'Erwärmung gestartet' }] },
     { name: 'Position · Kontrolllauf', duration: 45, offset: 0.003, phase: 1.3, ago: 900000,
       markers: [{ id: 'position-marker', t: 12, note: 'Position bestätigt' }], profileIndex: 2 },
-  ].map((seed, index) => {
+  ]).map((seed, index) => {
     const profile = clone(profiles[seed.profileIndex ?? 0]);
     return {
-      id: `demo-1900-run-${index + 1}`, name: seed.name, createdAt: new Date(now - seed.ago).toISOString(),
+      id: `demo-${SENSOR.id}-run-${index + 1}`, name: seed.name, createdAt: new Date(now - seed.ago).toISOString(),
       duration: seed.duration, source: 'demo', sensor: SENSOR.model, profile,
       points: makeDemoPoints(seed.duration, seed.offset, seed.phase, profile.target), markers: seed.markers,
       feedback: [], parameterHistory: [], storage: 'Browser · lokal', displayRate: DISPLAY_RATE,
     };
   });
-  return { sensorModel: SENSOR.model, profiles, activeProfileId: profiles[0].id, recordings,
+  return { sensorModel: SENSOR.model, sensorId: SENSOR.id, profiles, activeProfileId: profiles[0].id, recordings,
     settings: { rate: profiles[0].rate, averaging: 9, output: 'rs422' }, setupComplete: false };
 }
+
+// Switch the stored state to the active SENSOR: profiles are kept per sensor (each in its own unit), recordings stay.
+export function adoptSensor(state) {
+  if (state.sensorModel === SENSOR.model) return state;
+  const shelf = { ...(state.profilesBySensor ?? {}) };
+  if (state.sensorModel) shelf[state.sensorModel] = { profiles: state.profiles, activeProfileId: state.activeProfileId };
+  const saved = shelf[SENSOR.model];
+  const profiles = saved?.profiles ?? createInitialState().profiles;
+  const activeProfileId = profiles.some(p => p.id === saved?.activeProfileId) ? saved.activeProfileId : profiles[0].id;
+  return { ...state, sensorModel: SENSOR.model, sensorId: SENSOR.id,
+    sensorInfo: SENSOR.kind === 'temperature' ? { model: SENSOR.model.replace(/^thermoMETER /, ''), range_min: SENSOR.rangeStart, range_max: SENSOR.rangeEnd } : null,
+    profiles, activeProfileId, profilesBySensor: shelf };
+}
+
+// Unit of a stored recording (older recordings have none and are distances).
+export const unitOf = recording => recording?.profile?.unit || recording?.unit || 'mm';
 
 export function loadState() {
   try {
@@ -104,6 +170,8 @@ export function loadState() {
     const state = JSON.parse(raw);
     if (!Array.isArray(state.profiles) || !state.profiles.length || !Array.isArray(state.recordings) ||
         !state.profiles.some(profile => profile.id === state.activeProfileId)) throw new Error('invalid state');
+    // A state saved while another known sensor was active comes back with that sensor.
+    if (state.sensorId && state.sensorId !== SENSOR.id && SENSORS[state.sensorId]) useSensor(state.sensorId, state.sensorInfo);
     if (state.sensorModel === SENSOR.model) return state;
 
     // Keep archived measurements on their original absolute scale.
@@ -221,11 +289,13 @@ function download(blob, filename) {
 export function exportRecordingCSV(recording) {
   const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
   const offset = recording.zeroOffset ?? 0;
-  const rows = [['type', 'time_s', 'raw_distance_mm', 'display_distance_mm', 'note', 'accepted', 'parameter_version']];
+  const unit = unitOf(recording);
+  const q = unit === '°C' ? 'temperature_c' : 'distance_mm';
+  const rows = [['type', 'time_s', `raw_${q}`, `display_${q}`, 'note', 'accepted', 'parameter_version']];
   for (const point of recording.points) rows.push(['measurement', point.t, point.value, round(point.value - offset), '', '', point.version ?? recording.profileAtStart?.version ?? recording.profile.version]);
   for (const marker of recording.markers ?? []) rows.push(['marker', marker.t, '', '', marker.note, '', '']);
   for (const event of recording.feedback ?? []) rows.push(['feedback', event.t, event.value, round(event.value - offset), event.note, event.accepted, event.version]);
-  const metadata = `# ${recording.name}\n# Sensor: ${recording.sensor}\n# Quelle: ${recording.source === 'demo' ? 'Demo' : recording.source}\n# Darstellung: ${recording.displayRate ?? DISPLAY_RATE} Werte/s; Profil-Messrate: ${recording.profile.rate} Hz\n# Anzeige-Nullpunkt: ${offset} mm; raw_distance_mm bleibt unverändert\n`;
+  const metadata = `# ${recording.name}\n# Sensor: ${recording.sensor}\n# Quelle: ${recording.source === 'demo' ? 'Demo' : recording.source}\n# Darstellung: ${recording.displayRate ?? DISPLAY_RATE} Werte/s; Profil-Messrate: ${recording.profile.rate} Hz\n# Anzeige-Nullpunkt: ${offset} ${unit}; raw_${q} bleibt unverändert\n`;
   const csv = '\uFEFF' + metadata + rows.map(row => row.map(cell).join(',')).join('\r\n');
   return download(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${safeFilename(recording.name)}.csv`);
 }
@@ -263,8 +333,10 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
     doc.setTextColor(...color);
     doc.text(String(value), x, y, options);
   };
-  const decimal = value => Number(value).toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-  const mm = value => `${decimal(value)} mm`;
+  const unit = unitOf(recording);
+  const digits = unit === '°C' ? 2 : 3;
+  const decimal = value => Number(value).toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const mm = value => `${decimal(value)} ${unit}`;
   doc.setFont('helvetica', 'bold');
   text('MICRO-EPSILON / SENSOR MONITOR', 18, 18, 9, muted);
   doc.setDrawColor(...rule);
@@ -322,7 +394,7 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
   for (let i = 1; i < points.length; i++) doc.line(px(points[i - 1].t), py(points[i - 1].value), px(points[i].t), py(points[i].value));
   text(formatDuration(start), x, y + height + 6, 8, muted);
   text(formatDuration(end), x + width, y + height + 6, 8, muted, { align: 'right' });
-  text('Abstand / mm', x, y - 4, 8, muted);
+  text(`${unit === '°C' ? 'Temperatur' : 'Abstand'} / ${unit}`, x, y - 4, 8, muted);
   text('Messwert', x + width, y - 4, 8, copper, { align: 'right' });
 
   let cursor = 153 + headerExtra;
