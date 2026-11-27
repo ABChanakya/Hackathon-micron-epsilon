@@ -68,6 +68,7 @@ class Hub:
         self.err_total, self.last_err = 0, None
         self.dropped_total, self.last_counter = 0, None
         self.latest = {}
+        self.last_frame = None
         self.int_sum, self.int_n = 0.0, 0
 
     # ---- called from the asyncio side -------------------------------------------------
@@ -293,6 +294,7 @@ class Hub:
                          "sensor_ts_ms": lt.get("sensor_ts_ms"), "state": lt.get("state"),
                          "state_flags": state_flags(lt.get("state")), "dropped_total": self.dropped_total}
                 self.int_sum, self.int_n = 0.0, 0
+                self.last_frame = frame
                 if self.loop and self.clients:
                     self.loop.call_soon_threadsafe(self._broadcast, frame)
 

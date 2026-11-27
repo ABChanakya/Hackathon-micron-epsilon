@@ -19,6 +19,19 @@ curl -X POST localhost:8000/api/connect -H 'content-type: application/json' \
 While connected the sensor streams over RS422 and its 4-20 mA analog output is off. Disconnecting, or stopping the server
 with Ctrl+C, switches it back. If the server is killed hard (`kill -9`), reconnect and disconnect once to restore it.
 
+## Record several materials in one go (guided)
+```
+cd backend
+python3 record_materials.py              # real sensor (USB port found automatically)
+python3 record_materials.py --sensor SIM # practice run without a sensor
+```
+It asks for a material name, waits until you have placed it (it checks that the sensor sees it and that it holds still),
+then records two 10 s takes: the sensor's median averaging and no averaging. Press Enter on an empty name to finish.
+Options: `--seconds 10`, `--rate 4` (kHz), `--takes median,none,moving`, `--port /dev/cu.usbserial-...`.
+Only one program can use the sensor at a time, so close sensorTOOL and stop any other backend first.
+The target must sit inside the sensor's window (ILD1420-50: 35-85 mm, ILD1900-10: 20-30 mm from the sensor face).
+Ctrl+C is safe: the sensor is put back the way it was.
+
 ## Making data with only the sensor
 The ILD1420-50 measures **35-85 mm from the sensor face**. Point it down at the desk from a stack of books, or at a
 wall. Record each scene for 10-30 s with a label:

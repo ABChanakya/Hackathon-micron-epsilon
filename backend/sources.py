@@ -355,6 +355,20 @@ class SerialSource:
                 a = self.snapshot.get("AVERAGE", "NONE").split()
                 self.avg = {"mode": a[0], "depth": int(a[1]) if len(a) > 1 else None}
                 self.restore_add = self.snapshot.get("OUTADD_RS422", "NONE")
+            # Remember what the sensor had BEFORE we touched it until we have put it back. If an earlier session died
+            # (cable pulled, crash), the values read now are our own leftovers, so the marker's values win.
+            self._marker = os.path.join(os.path.dirname(os.path.abspath(__file__)), f".sensor_state_{self.info['serial']}.json")
+            if os.path.isfile(self._marker):
+                try:
+                    with open(self._marker) as f:
+                        m = json.load(f)
+                    self.restore = cfg.get("restore_output") or m.get("output", self.restore)
+                    self.restore_add = m.get("add", self.restore_add)
+                except Exception:
+                    pass
+            else:
+                with open(self._marker, "w") as f:
+                    json.dump({"output": self.restore, "add": self.restore_add}, f)
             mr = re.search(r"MEASRATE\s+([\d.]+)", self.snapshot.get("MEASRATE", "") and "MEASRATE " + self.snapshot["MEASRATE"])
             if mr:
                 self.rate_hz = float(mr.group(1)) * 1000.0
@@ -369,6 +383,7 @@ class SerialSource:
 
     def close(self):
         if self.ser:
+            restored = False
             try:
                 if self.restore:
                     self._ascii(f"OUTPUT {self.restore}", wait=0.8)   # stop the stream first ...
@@ -376,12 +391,15 @@ class SerialSource:
                 if self.restore_add is not None:   # ... then restore the data selection the sensor had
                     cmd = "OUT_RS422" if self.is1900 else "OUTADD_RS422"
                     self._ascii(f"{cmd} {self.restore_add}", wait=0.8)
+                restored = True
             except Exception:
-                pass
+                pass                                # e.g. the USB cable was pulled; the marker file keeps the original
             try:
                 self.ser.close()
             finally:
                 self.ser = None
+            if restored and getattr(self, "_marker", None) and os.path.isfile(self._marker):
+                os.remove(self._marker)
 
     # ---- measurement channel -----------------------------------------------------------
     def _scale(self, x):

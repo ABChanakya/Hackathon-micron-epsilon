@@ -1,0 +1,55 @@
+{
+  "file": "rec_20261127_204002.csv",
+  "label": "Metal-stairs | median 9",
+  "notes": "material: Metal-stairs; 4 kHz; median 9; static",
+  "source": "serial-ild1900",
+  "info": {
+    "model": "ILD1900",
+    "serial": "00323100070",
+    "range_mm": 10.0,
+    "smr_mm": 20,
+    "firmware": "018.000",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 4.0,
+    "averaging": {
+      "mode": "MEDIAN",
+      "depth": 9
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP"
+    ],
+    "order": [
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "COUNTER",
+      "STATE",
+      "INTENSITY1",
+      "DIST1"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T20:40:02",
+  "stopped": "2026-11-27T20:40:12",
+  "duration_s": 10.003,
+  "samples": 39837,
+  "valid": 39837,
+  "errors": 0,
+  "errors_by_code": {},
+  "dropped": 191,
+  "min_mm": 2.120208740234375,
+  "max_mm": 4.16168212890625,
+  "mean_mm": 2.962048,
+  "planned_duration_s": 10.0
+}

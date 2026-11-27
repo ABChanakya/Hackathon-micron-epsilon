@@ -7,7 +7,8 @@ All bodies are JSON. Errors come back as HTTP 400 `{"detail": "<message>"}`, wit
 ## Concepts
 - One source at a time:
   - `SIM`: a built-in simulator.
-  - `ILD1420-serial`: the real sensor over USB serial. Verified on an ILD1420-50, and it works on macOS.
+  - `ILD-serial` (or `ILD1420-serial`): the real sensor over USB serial. The model is read from the sensor.
+    Verified on an ILD1420-50 and an ILD1900-10, and it works on macOS.
   - `REPLAY`: plays back a recording.
   - MEDAQLib sensor names: Windows/Linux only, untested.
 - The raw stream (up to 4 kHz) is reduced to **~25 frames/s** for the browser.
@@ -36,6 +37,7 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | Method & path | Body / query | Returns | Purpose |
 |---|---|---|---|
 | `GET /api/status` | – | State | Connection, recording and tare state |
+| `GET /api/latest` | – | frame \| null | The most recent live frame (same fields as the WebSocket). For scripts and polling |
 | `GET /api/sensors/scan` | – | list | Simulator, USB serial ports (not probed) and recordings (as `REPLAY` entries) |
 | `POST /api/connect` | see below | State | Open a source (closes the previous one) |
 | `POST /api/disconnect` | – | State | Close it. Stops any recording; a real sensor gets its settings back |

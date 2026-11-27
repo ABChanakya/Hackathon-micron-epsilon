@@ -1,3 +1,5 @@
 .venv/
 __pycache__/
 recordings/
+.sensor_state_*.json
+server.log

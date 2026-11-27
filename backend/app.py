@@ -56,6 +56,12 @@ async def _do(fn, *a):
         raise HTTPException(400, str(e))
 
 
+@app.get("/api/latest")
+def latest():
+    """The most recent live frame (same fields as the WebSocket), or null before the first one. For scripts and polling."""
+    return hub.last_frame
+
+
 @app.get("/api/sensors/scan")
 def scan():
     # Simulator + USB-serial ports (candidates for "ILD1420-serial"; not probed until you connect) + recordings to replay.
