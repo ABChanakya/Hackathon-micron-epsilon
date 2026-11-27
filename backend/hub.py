@@ -314,6 +314,7 @@ class Hub:
         return {"value": round(f["dist_from_face_mm"], 4) if valid else None, "unit": "mm", "sensor": info.get("model"),
                 "state": led if led in self.LEDS else "unknown",
                 "output": "green" if f.get("status") == "streaming" else "unknown",
+                "source": getattr(self.src, "kind", None),   # e.g. serial-ild1900 (live) or replay
                 "serial": info.get("serial"), "range_start": smr, "range_end": None if smr is None or rng is None else smr + rng,
                 "range": rng, "rate_hz": f.get("rate_hz"), "intensity": f.get("intensity"),
                 "error": None if valid else (f.get("last_error") or {}).get("text") or "no valid reading",
