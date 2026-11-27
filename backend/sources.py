@@ -338,7 +338,9 @@ class SerialSource:
             m = float(kv.get("Measuring range", "50").lower().replace("mm", "").strip() or 50)
             self.range_mm = m
             smr = (ILD1900_SMR_MM if self.is1900 else ILD1420_SMR_MM).get(int(m))
-            self.info = {"model": name, "serial": kv.get("Serial"), "range_mm": m, "smr_mm": smr,
+            # The ILD1900 reports only "ILD1900"; the full designation adds the measuring range (like "ILD1420-50").
+            model = name if re.search(r"-\d+", name) else f"{name}-{int(m)}"
+            self.info = {"model": model, "name": name, "serial": kv.get("Serial"), "range_mm": m, "smr_mm": smr,
                          "firmware": kv.get("Version"), "unit": "mm"}
             mo = re.search(r"OUTPUT\s+(\w+)", self._ascii("OUTPUT"))   # remember the output mode to restore on close
             prev = mo.group(1) if mo else "ANALOG"

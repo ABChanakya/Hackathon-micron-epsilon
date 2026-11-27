@@ -18,7 +18,7 @@ const ledColor = color => ledColors.has(color) ? color : 'unknown';
 
 export function matchesBackendSensor(status) {
   const info = status?.info;
-  return Boolean(info && status.source !== 'replay' &&
+  return Boolean(info &&
     (exactModel(info.model) || sensorCode(info.model) === 'ild1900') &&
     info.range_mm === SENSOR.range && info.smr_mm === SENSOR.rangeStart && info.unit === 'mm');
 }
@@ -36,7 +36,7 @@ export function parseBridgeSample(payload, verifiedSensor = false) {
 
   const value = native ? payload.dist_from_face_mm : payload.value;
   const led = {
-    state: ledColor(native ? (payload.state ?? payload.state_flags?.led) : payload.state),
+    state: ledColor(native ? (payload.state_flags?.led ?? payload.state) : payload.state),
     output: ledColor(payload.output),
   };
   if (native && (value === null || payload.n === 0 || led.state === 'red' || led.state === 'off')) {

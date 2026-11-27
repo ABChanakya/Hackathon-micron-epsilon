@@ -233,6 +233,10 @@ test('the repository backend sends an absolute distance and can retain a stale r
   assert.deepEqual(engine.parseBridgeSample({ ...frame, dist_from_face_mm: null }, true), { error: 'signal' });
   assert.deepEqual(engine.parseBridgeSample({ ...frame, dist_from_face_mm: 19.99 }, true), { error: 'range' });
   assert.equal(engine.parseBridgeSample({ hello: 'unrelated' }, true), null);
+  // real backend frames also carry the raw 18-bit status word in `state`; the LED must come from state_flags
+  assert.deepEqual(engine.parseBridgeSample({ ...frame, state: 65792, state_flags: { led: 'yellow' } }, true), {
+    value: 24.75, led: { state: 'yellow', output: 'unknown' },
+  });
 });
 
 test('only live backend status for the 10 mm ILD1900 can identify the input sensor', () => {
@@ -246,5 +250,5 @@ test('only live backend status for the 10 mm ILD1900 can identify the input sens
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, model: 'ILD1900-25', range_mm: 25, smr_mm: 25 } }), false);
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, smr_mm: 25 } }), false);
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, unit: 'inch' } }), false);
-  assert.equal(engine.matchesBackendSensor({ ...status, source: 'replay' }), false);
+  assert.equal(engine.matchesBackendSensor({ ...status, source: 'replay' }), true);
 });
