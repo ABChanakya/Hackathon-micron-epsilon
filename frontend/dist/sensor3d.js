@@ -33,37 +33,46 @@ function normalizedStatus(value) {
 function makeFallback(container, onSelect, initialState) {
   const wrapper = document.createElement('div');
   wrapper.className = 'sensor3d-fallback';
-  wrapper.style.cssText = 'min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;color:inherit;font:inherit;text-align:center';
-  const title = document.createElement('div');
-  title.textContent = 'optoNCDT 1420';
-  title.style.cssText = 'font-size:18px;font-weight:600';
+  wrapper.style.cssText = 'height:100%;display:grid;align-content:center;justify-items:center;gap:12px;padding:10px;text-align:center';
   const explanation = document.createElement('p');
-  explanation.textContent = 'Die 3D-Ansicht ist in diesem Browser nicht verfügbar. Die LED-Erklärungen bleiben bedienbar.';
-  explanation.style.cssText = 'font-size:12px;line-height:1.6;opacity:.7;max-width:280px;margin:0';
+  explanation.textContent = '3D-Ansicht in diesem Browser nicht verfügbar.';
+  explanation.style.cssText = 'font-size:11px;line-height:1.4;margin:0';
+  const viewerHelp = container.querySelector('.viewer-help');
+  const helpWasHidden = viewerHelp?.hidden;
+  if (viewerHelp) viewerHelp.hidden = true;
   const buttons = {};
+  const currentStatus = { state: 'unknown', output: 'unknown' };
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:12px';
+  row.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:center;gap:7px';
   for (const name of ['state', 'output']) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.style.cssText = 'border:1px solid #65727b66;border-radius:7px;padding:9px 13px;background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer';
+    button.textContent = name === 'state' ? 'State-LED' : 'Output-LED';
+    button.style.cssText = 'min-height:34px;border:1px solid currentColor;border-radius:2px;padding:4px 9px;background:transparent;color:inherit;font:inherit;font-size:10px;cursor:pointer';
     button.onclick = () => onSelect?.(name);
     buttons[name] = button;
     row.append(button);
   }
-  wrapper.append(title, explanation, row);
+  wrapper.append(explanation, row);
   container.append(wrapper);
   const setStatus = (status = {}) => {
     for (const name of ['state', 'output']) {
-      const value = normalizedStatus(status[name]);
-      buttons[name].textContent = `${name === 'state' ? 'State' : 'Output'}-LED`;
+      if (status[name] !== undefined) currentStatus[name] = normalizedStatus(status[name]);
+      const value = currentStatus[name];
       buttons[name].title = LED_MEANINGS[name][value];
       buttons[name].setAttribute('aria-label', `${buttons[name].textContent}: ${LED_MEANINGS[name][value]}`);
       buttons[name].style.boxShadow = `inset 3px 0 #${LED_COLORS[value].toString(16).padStart(6, '0')}`;
     }
   };
   setStatus(initialState);
-  return { setStatus, reset() {}, dispose() { wrapper.remove(); } };
+  return {
+    setStatus,
+    reset() {},
+    dispose() {
+      wrapper.remove();
+      if (viewerHelp) viewerHelp.hidden = helpWasHidden;
+    },
+  };
 }
 
 /**
@@ -110,11 +119,11 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   controls.update();
   controls.saveState();
 
-  scene.add(new THREE.HemisphereLight(0xe4f2ff, 0x252d37, 2.3));
-  const keyLight = new THREE.DirectionalLight(0xffffff, 4);
+  scene.add(new THREE.HemisphereLight(0xf2eef7, 0x292331, 2.3));
+  const keyLight = new THREE.DirectionalLight(0xfff5ea, 4);
   keyLight.position.set(3, 6, 5);
   scene.add(keyLight);
-  const fillLight = new THREE.DirectionalLight(0xc8e4f1, 2.1);
+  const fillLight = new THREE.DirectionalLight(0xe4dbe9, 2.1);
   fillLight.position.set(-5, 1, 3);
   scene.add(fillLight);
   const rimLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -126,9 +135,9 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   scene.add(sensor);
 
   const textures = [];
-  const metal = new THREE.MeshStandardMaterial({ color: 0x929b9f, metalness: 0.62, roughness: 0.38 });
-  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x38434c, metalness: 0.65, roughness: 0.35 });
-  const black = new THREE.MeshStandardMaterial({ color: 0x121a22, metalness: 0.18, roughness: 0.58 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x9c999b, metalness: 0.62, roughness: 0.38 });
+  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x45404a, metalness: 0.65, roughness: 0.35 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x211c27, metalness: 0.18, roughness: 0.58 });
   const screwMetal = new THREE.MeshStandardMaterial({ color: 0xc1cad0, metalness: 0.8, roughness: 0.3 });
   const lens = new THREE.MeshStandardMaterial({ color: 0x0f2539, metalness: 0.7, roughness: 0.15 });
 
@@ -229,7 +238,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
     button.type = 'button';
     button.className = 'sensor3d-led-hotspot';
     button.style.cssText = 'position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border:1px solid transparent;border-radius:50%;background:transparent;cursor:pointer;padding:0;z-index:1';
-    button.addEventListener('focus', () => { button.style.borderColor = '#7df4ff'; });
+    button.addEventListener('focus', () => { button.style.borderColor = 'var(--accent)'; });
     button.addEventListener('blur', () => { button.style.borderColor = 'transparent'; });
     button.addEventListener('click', event => { event.stopPropagation(); onSelect?.(name); });
     ledButtons[name] = button;

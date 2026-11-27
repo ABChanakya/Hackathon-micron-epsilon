@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
@@ -159,7 +158,6 @@ test('real PDF export uses selected-window learning state and application time',
     assert.ok(captured.some(text => text.includes('Keine Parameteränderungen')));
     assert.equal(pdfBytes.subarray(0, 4).toString(), '%PDF');
     assert.ok(pdfBytes.length > 5000);
-    writeFileSync(new URL('./report-check.pdf', import.meta.url), pdfBytes);
     captured = [];
     engine.exportReportPDF(recording, { start: 40, end: 60 });
     assert.ok(captured.some(text => /Version 2/.test(text)));

@@ -204,58 +204,110 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
   const initialLearning = learningAt(Number(start));
   const finalLearning = learningAt(Number(end));
   const summary = statistics(points);
-  const navy = [22, 34, 44], muted = [93, 106, 116], cyan = [0, 120, 132];
-  const text = (value, x, y, size = 10, color = navy) => { doc.setFontSize(size); doc.setTextColor(...color); doc.text(String(value), x, y); };
-  const mm = value => `${Number(value).toFixed(3)} mm`;
+  const ink = [36, 31, 45];
+  const muted = [101, 88, 111];
+  const copper = [158, 68, 41];
+  const paper = [246, 244, 242];
+  const corridor = [232, 230, 233];
+  const rule = [209, 204, 213];
+  const text = (value, x, y, size = 10, color = ink, options) => {
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.text(String(value), x, y, options);
+  };
+  const decimal = value => Number(value).toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const mm = value => `${decimal(value)} mm`;
   doc.setFont('helvetica', 'bold');
-  text('MICRO-EPSILON', 18, 20, 13);
-  text('Messbericht', 18, 34, 24);
+  text('MICRO-EPSILON / SENSOR MONITOR', 18, 18, 9, muted);
+  doc.setDrawColor(...rule);
+  doc.setLineWidth(0.25);
+  doc.line(18, 23, 192, 23);
+  doc.setDrawColor(...copper);
+  doc.setLineWidth(0.65);
+  doc.line(18, 23, 42, 23);
+  text('Messbericht', 18, 36, 24);
   doc.setFont('helvetica', 'normal');
-  text(recording.name, 18, 43, 12);
-  text(`${recording.sensor}  |  ${new Date(recording.createdAt).toLocaleString('de-DE')}`, 18, 51, 9, muted);
-  text(`Zeitraum: ${formatDuration(start)} - ${formatDuration(end)}  |  Profil: ${p.name}`, 18, 58, 9, muted);
-  text(`Quelle: ${recording.source === 'demo' ? 'Demo - simulierte Daten' : recording.source}`, 18, 65, 9, muted);
+  doc.setFontSize(12);
+  const nameLines = doc.splitTextToSize(recording.name, 174);
+  nameLines.forEach((line, index) => text(line, 18, 43 + index * 5, 12));
+  const nameExtra = (nameLines.length - 1) * 5;
+  text(`${recording.sensor}  |  ${new Date(recording.createdAt).toLocaleString('de-DE')}`, 18, 51 + nameExtra, 9, muted);
+  doc.setFontSize(9);
+  const profileLines = doc.splitTextToSize(`Zeitraum: ${formatDuration(start)} - ${formatDuration(end)}  |  Profil: ${p.name}`, 174);
+  profileLines.forEach((line, index) => text(line, 18, 58 + nameExtra + index * 4, 9, muted));
+  const headerExtra = nameExtra + (profileLines.length - 1) * 4;
+  const isDemo = recording.source === 'demo';
+  const source = isDemo ? 'Demo · simulierte Messwerte' : recording.source === 'sensor' ? 'Sensor · Messbrücke' : recording.source;
+  text(`Quelle: ${source}`, 18, 65 + headerExtra, 9, isDemo ? copper : muted);
 
-  const x = 30, y = 78, width = 160, height = 60;
+  const x = 30, y = 78 + headerExtra, width = 160, height = 60;
   const low = Math.min(summary.min, p.lower, initialLearning.lower, finalLearning.lower);
   const high = Math.max(summary.max, p.upper, initialLearning.upper, finalLearning.upper);
   const padding = Math.max((high - low) * 0.18, 0.01);
   const ymin = low - padding, ymax = high + padding;
   const px = time => x + ((time - start) / (end - start)) * width;
   const py = value => y + height - ((value - ymin) / (ymax - ymin)) * height;
-  doc.setDrawColor(220, 226, 230); doc.setLineWidth(0.2); doc.rect(x, y, width, height);
-  for (const value of [p.lower, p.target, p.upper]) {
-    doc.setDrawColor(196, 204, 209); doc.setLineDashPattern([1, 1], 0); doc.line(x, py(value), x + width, py(value));
-    text(Number(value).toFixed(3), 17, py(value) + 1, 7, muted);
+  doc.setFillColor(...paper);
+  doc.rect(x, y, width, height, 'F');
+  doc.setFillColor(...corridor);
+  doc.rect(x, py(p.upper), width, py(p.lower) - py(p.upper), 'F');
+  doc.setDrawColor(...rule);
+  doc.setLineWidth(0.2);
+  for (let tick = 0; tick <= 4; tick++) {
+    const value = ymin + (ymax - ymin) * tick / 4;
+    const tickY = py(value);
+    doc.line(x, tickY, x + width, tickY);
+    text(decimal(value), x - 2.5, tickY + 0.85, 7, muted, { align: 'right' });
   }
-  doc.setLineDashPattern([], 0); doc.setDrawColor(...cyan); doc.setLineWidth(0.45);
+  doc.setDrawColor(...muted);
+  doc.setLineDashPattern([1, 1], 0);
+  for (const value of [p.lower, p.target, p.upper]) {
+    doc.line(x, py(value), x + width, py(value));
+  }
+  doc.setLineDashPattern([], 0);
+  doc.setDrawColor(...copper);
+  doc.setLineWidth(0.45);
+  if (points.length === 1) {
+    doc.setFillColor(...copper);
+    doc.circle(px(points[0].t), py(points[0].value), 0.6, 'F');
+  }
   for (let i = 1; i < points.length; i++) doc.line(px(points[i - 1].t), py(points[i - 1].value), px(points[i].t), py(points[i].value));
   text(formatDuration(start), x, y + height + 6, 8, muted);
-  text(formatDuration(end), x + width - 9, y + height + 6, 8, muted);
-  text('Abstand (mm) / Zeit', x, y - 4, 8, muted);
+  text(formatDuration(end), x + width, y + height + 6, 8, muted, { align: 'right' });
+  text('Abstand / mm', x, y - 4, 8, muted);
+  text('Messwert', x + width, y - 4, 8, copper, { align: 'right' });
 
-  let cursor = 157;
-  const line = (label, value) => { text(label, 18, cursor, 9, muted); text(value, 83, cursor, 9); cursor += 7; };
-  line('Sollwert / Spezifikationsgrenzen', `${mm(p.target)}  /  ${mm(p.lower)} - ${mm(p.upper)}`);
-  line('Lernstand zu Zeitraumstart', `${mm(initialLearning.lower)} - ${mm(initialLearning.upper)}  (Version ${initialLearning.version})`);
+  let cursor = 153 + headerExtra;
+  const line = (label, value) => { text(label, 18, cursor, 9, muted); text(value, 83, cursor, 9); cursor += 6; };
+  line('Sollwert / Sollgrenzen', `${mm(p.target)}  /  ${mm(p.lower)} - ${mm(p.upper)}`);
+  line('Lernstand am Anfang', `${mm(initialLearning.lower)} - ${mm(initialLearning.upper)}  (Version ${initialLearning.version})`);
   if (finalLearning.version !== initialLearning.version) {
-    line('Lernstand zu Zeitraumende', `${mm(finalLearning.lower)} - ${mm(finalLearning.upper)}  (Version ${finalLearning.version})`);
+    line('Lernstand am Ende', `${mm(finalLearning.lower)} - ${mm(finalLearning.upper)}  (Version ${finalLearning.version})`);
   }
   line('Profil-Messrate / Einheit', `${p.rate} Hz / ${p.unit ?? 'mm'}`);
-  if (recording.zeroOffset) line('Anzeige-Nullpunkt', `${mm(recording.zeroOffset)}; Bericht zeigt absolute Sensorwerte`);
+  if (recording.zeroOffset) line('Anzeige-Nullpunkt', `${mm(recording.zeroOffset)} (Bericht mit Absolutwerten)`);
   line('Minimum / Maximum', `${mm(summary.min)} / ${mm(summary.max)}`);
   line('Mittelwert / Spannweite', `${mm(summary.mean)} / ${mm(summary.span)}`);
-  line('Enthaltene Messwerte', `${summary.count} (${recording.displayRate ?? DISPLAY_RATE} Darstellungswerte/s)`);
-  if (recording.source === 'demo') { text('Demodaten mit reduzierter Darstellungsrate; kein vollständiger Hardware-Datenstrom.', 18, cursor + 1, 8, muted); cursor += 12; }
+  line('Messwerte im Zeitraum', `${summary.count} (${recording.displayRate ?? DISPLAY_RATE} angezeigte Werte/s)`);
 
   const ensureSpace = amount => { if (cursor + amount > 274) { doc.addPage(); cursor = 23; } };
-  const paragraph = (value, color = navy) => {
+  const paragraph = (value, color = ink) => {
     const lines = doc.splitTextToSize(String(value), 174);
     for (const part of lines) { ensureSpace(5); text(part, 18, cursor, 9, color); cursor += 5; }
     cursor += 2;
   };
-  const section = title => { ensureSpace(15); cursor += 5; doc.setFont('helvetica', 'bold'); text(title, 18, cursor, 11); doc.setFont('helvetica', 'normal'); cursor += 8; };
-  section('Ereignisse und Notizen');
+  const section = title => {
+    ensureSpace(22);
+    doc.setDrawColor(...rule);
+    doc.setLineWidth(0.2);
+    doc.line(18, cursor, 192, cursor);
+    cursor += 5;
+    doc.setFont('helvetica', 'bold');
+    text(title, 18, cursor, 10);
+    doc.setFont('helvetica', 'normal');
+    cursor += 6;
+  };
+  section('Notizen');
   const markers = (recording.markers ?? []).filter(item => item.t >= start && item.t <= end);
   markers.length ? markers.forEach(item => paragraph(`${formatDuration(item.t)} - ${item.note}`)) : paragraph('Keine Ereignisse im gewählten Zeitraum.', muted);
   section('Bewertungen');
@@ -268,7 +320,14 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
   });
   changes.length ? changes.forEach(item => paragraph(`${formatDuration(item.appliedT ?? item.t)} - Version ${item.version}: ${mm(item.previousLower)} / ${mm(item.previousUpper)} -> ${mm(item.nextLower)} / ${mm(item.nextUpper)}. ${item.reason ?? ''}`)) : paragraph('Keine Parameteränderungen im gewählten Zeitraum.', muted);
   const pages = doc.getNumberOfPages();
-  for (let page = 1; page <= pages; page++) { doc.setPage(page); text(`Micro-Epsilon Sensor Monitor  |  ${page} / ${pages}`, 18, 287, 8, muted); }
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page);
+    doc.setDrawColor(...rule);
+    doc.setLineWidth(0.2);
+    doc.line(18, 282, 192, 282);
+    text('MICRO-EPSILON / MESSBERICHT', 18, 287, 8, muted);
+    text(`${page} / ${pages}`, 192, 287, 8, muted, { align: 'right' });
+  }
   const filename = `${safeFilename(recording.name)}-Messbericht.pdf`;
   doc.save(filename);
   return { filename };
