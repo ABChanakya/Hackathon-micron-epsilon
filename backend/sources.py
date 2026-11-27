@@ -20,15 +20,23 @@ SERIAL_OPTIONS = {"rate_khz": [0.25, 0.5, 1, 2, 4, 8],
 ILD1420_SMR_MM = {10: 20, 25: 25, 50: 35, 100: 50, 200: 60, 500: 100}
 
 
-def _check_avg(a):
+ILD1900_SMR_MM = {10: 20, 25: 25, 50: 40, 100: 50, 200: 60, 500: 100}   # ILD1900 manual p.18
+ILD1900_OPTIONS = {"rate_khz": [0.25, 0.5, 1, 2, 4, 8, 10],            # 7 steps, manual p.18 (0.25-10 kHz)
+                   "averaging": {"NONE": [], "MOVING": [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096],
+                                 "RECURSIVE": "2..32767", "MEDIAN": [3, 5, 7, 9]},
+                   "channels": SERIAL_OPTIONS["channels"]}
+
+
+def _check_avg(a, options=None):
+    opts = (options or SERIAL_OPTIONS)["averaging"]
     mode = str(a.get("mode", "NONE")).upper()
     if mode == "NONE":
         return {"mode": "NONE", "depth": None}
     depth = int(a.get("depth", 0))
-    ok = {"MOVING": depth in (2, 4, 8, 16, 32, 64, 128), "RECURSIVE": 2 <= depth <= 32767,
-          "MEDIAN": depth in (3, 5, 7, 9)}.get(mode)
+    ok = {"MOVING": depth in opts["MOVING"], "RECURSIVE": 2 <= depth <= 32767,
+          "MEDIAN": depth in opts["MEDIAN"]}.get(mode)
     if not ok:
-        raise RuntimeError(f"invalid averaging {mode} {depth}; options: {SERIAL_OPTIONS['averaging']}")
+        raise RuntimeError(f"invalid averaging {mode} {depth}; options: {opts}")
     return {"mode": mode, "depth": depth}
 
 
@@ -188,8 +196,10 @@ class MedaqSource:
 
 
 class SerialSource:
-    """optoNCDT ILD1420 straight over its RS422/USB serial line (pyserial, no MEDAQLib -> works on macOS).
-    Protocol: ILD1420 manual ch. 8 + appendix A3. ASCII commands end with CRLF and are answered with '...\r\n->'.
+    """optoNCDT ILD1420 and ILD1900 straight over their RS422/USB serial line (pyserial, no MEDAQLib -> works on macOS).
+    The model is read from GETINFO and picks the profile (commands and scaling differ, see _scale/_sample/_set_channels).
+    Protocol: ILD1420 manual ch. 8 + appendix A3, ILD1900 manual ch. 8, 7.6.2 and A3.2. ASCII commands end with CRLF
+    and are answered with '...\r\n->'.
     Measurement values are 3-byte words (flag bits 00 L / 01 M / 10|11 H, 6 data bits each). A frame starts with
     an H flag of 10; the following words (H flag 11) come in the order reported by GETOUTINFO_RS422
     (verified: SHUTTER COUNTER TIMESTAMPLO TIMESTAMPHI INTENSITY1 DIST1 STATE)."""
@@ -213,6 +223,10 @@ class SerialSource:
         self.order = ["DIST1"]
         self.cur = None
         self.unsupported = set()      # rates this unit rejected (E236)
+        self.is1900 = False           # profile: False = ILD1420, True = ILD1900
+        self.options = SERIAL_OPTIONS
+        self.print_text = ""
+        self.avg = {"mode": "NONE", "depth": None}
         self._last_rx = 0.0
 
     # ---- ASCII command channel ---------------------------------------------------------
@@ -278,10 +292,22 @@ class SerialSource:
             ch.pop()
         return ch
 
+    WIRE_1900 = {"SHUTTER": "SHUTTER", "COUNTER": "COUNTER", "TIMESTAMP": "TIMESTAMP_LO TIMESTAMP_HI",
+                 "INTENSITY": "INTENSITY", "STATE": "STATE"}
+
+    @staticmethod
+    def _norm(name):
+        """Signal names differ per model (TIMESTAMP_LO vs TIMESTAMPLO, INTENSITY vs INTENSITY1)."""
+        n = name.replace("_", "")
+        return "INTENSITY1" if n == "INTENSITY" else n
+
     def _set_channels(self, channels):
-        self._ok("OUTADD_RS422 " + (" ".join(channels) if channels else "NONE"))
+        if self.is1900:
+            self._ok("OUT_RS422 DIST1" + "".join(" " + self.WIRE_1900[c] for c in channels))
+        else:
+            self._ok("OUTADD_RS422 " + (" ".join(channels) if channels else "NONE"))
         info = self._ascii("GETOUTINFO_RS422")
-        order = info.split()[1:] if info.startswith("GETOUTINFO_RS422") else []
+        order = [self._norm(n) for n in info.split()[1:]] if info.startswith("GETOUTINFO_RS422") else []
         if "DIST1" not in order:
             raise RuntimeError(f"unexpected GETOUTINFO_RS422 reply: {info!r}")
         self.channels, self.order, self.cur = channels, order, None
@@ -298,20 +324,37 @@ class SerialSource:
             self.buf.clear()
             txt = self._ascii("GETINFO")
             if "Name:" not in txt:
-                raise RuntimeError(f"no ILD1420 answer on {port} at {self.ser.baudrate} baud (got {txt!r})")
+                raise RuntimeError(f"no ILD answer on {port} at {self.ser.baudrate} baud (got {txt!r})")
             kv = dict(l.split(":", 1) for l in txt.splitlines() if ":" in l)
             kv = {k.strip(): v.strip() for k, v in kv.items()}
+            name = kv.get("Name", "")
+            if name.startswith("ILD1900"):
+                self.is1900, self.options, self.kind = True, ILD1900_OPTIONS, "serial-ild1900"
+            elif name.startswith("ILD1420"):
+                self.is1900, self.options, self.kind = False, SERIAL_OPTIONS, "serial-ild1420"
+            else:
+                raise RuntimeError(f"unsupported sensor {name!r}: this driver knows ILD1420 and ILD1900")
+            self.MEASRATES = tuple(self.options["rate_khz"])
             m = float(kv.get("Measuring range", "50").lower().replace("mm", "").strip() or 50)
             self.range_mm = m
-            self.info = {"model": kv.get("Name"), "serial": kv.get("Serial"), "range_mm": m,
-                         "smr_mm": ILD1420_SMR_MM.get(int(m)), "firmware": kv.get("Version"), "unit": "mm"}
+            smr = (ILD1900_SMR_MM if self.is1900 else ILD1420_SMR_MM).get(int(m))
+            self.info = {"model": name, "serial": kv.get("Serial"), "range_mm": m, "smr_mm": smr,
+                         "firmware": kv.get("Version"), "unit": "mm"}
             mo = re.search(r"OUTPUT\s+(\w+)", self._ascii("OUTPUT"))   # remember the output mode to restore on close
             prev = mo.group(1) if mo else "ANALOG"
             self.restore = cfg.get("restore_output") or ("ANALOG" if prev == "RS422" else prev)
             if prev == "RS422":                                    # stream active: silence it so PRINT is clean text
                 self._ascii("OUTPUT ANALOG"); time.sleep(0.2); self.ser.reset_input_buffer(); self.buf.clear()
-            self.snapshot = dict(re.findall(r"^(\w+)[ \t]+(.*?)\s*$", self._ascii("PRINT", wait=2.0), re.M))
-            self.restore_add = self.snapshot.get("OUTADD_RS422", "NONE")
+            self.print_text = self._ascii("PRINT", wait=2.0)
+            self.snapshot = dict(re.findall(r"^(\w+)[ \t]+(.*?)\s*$", self.print_text, re.M))
+            if self.is1900:     # e.g. "COMP CH01 1 MEDIAN DIST1 9" (averaging block 1) and "OUT_RS422 DIST1"
+                ma = re.search(r"^COMP CH01 1 (\w+)(?: \S+ (\d+))?", self.print_text, re.M)
+                self.avg = {"mode": ma.group(1), "depth": int(ma.group(2)) if ma and ma.group(2) else None} if ma else self.avg
+                self.restore_add = self.snapshot.get("OUT_RS422", "DIST1")
+            else:
+                a = self.snapshot.get("AVERAGE", "NONE").split()
+                self.avg = {"mode": a[0], "depth": int(a[1]) if len(a) > 1 else None}
+                self.restore_add = self.snapshot.get("OUTADD_RS422", "NONE")
             mr = re.search(r"MEASRATE\s+([\d.]+)", self.snapshot.get("MEASRATE", "") and "MEASRATE " + self.snapshot["MEASRATE"])
             if mr:
                 self.rate_hz = float(mr.group(1)) * 1000.0
@@ -330,8 +373,9 @@ class SerialSource:
                 if self.restore:
                     self._ascii(f"OUTPUT {self.restore}", wait=0.8)   # stop the stream first ...
                     time.sleep(0.2); self.ser.reset_input_buffer(); self.buf.clear()
-                if self.restore_add is not None:
-                    self._ascii(f"OUTADD_RS422 {self.restore_add}", wait=0.8)   # ... then restore the extra values
+                if self.restore_add is not None:   # ... then restore the data selection the sensor had
+                    cmd = "OUT_RS422" if self.is1900 else "OUTADD_RS422"
+                    self._ascii(f"{cmd} {self.restore_add}", wait=0.8)
             except Exception:
                 pass
             try:
@@ -341,9 +385,14 @@ class SerialSource:
 
     # ---- measurement channel -----------------------------------------------------------
     def _scale(self, x):
+        """18-bit word -> mm from the start of the measuring range, or ERR_BASE - code for an invalid reading."""
+        if self.is1900:
+            if x >= 262073:
+                return ERR_BASE - self.ERR_MAP.get(x, 7)
+            return (x - 98232) / 65536.0 * self.range_mm              # ILD1900 manual p.79
         if x >= 262075 or x > 65520:
             return ERR_BASE - self.ERR_MAP.get(x, 7)
-        return (102.0 / 65520.0 * x - 1.0) * self.range_mm / 100.0   # mm from start of measuring range (manual p.85)
+        return (102.0 / 65520.0 * x - 1.0) * self.range_mm / 100.0   # ILD1420 manual p.85
 
     def _sample(self, words):
         """Map one frame (raw words in GETOUTINFO order) to a sample dict using the formulas on manual p.85-86."""
@@ -352,9 +401,10 @@ class SerialSource:
         if "COUNTER" in v:
             s["counter"] = v["COUNTER"]
         if "TIMESTAMPLO" in v and "TIMESTAMPHI" in v:
-            s["sensor_ts_ms"] = (65536 * v["TIMESTAMPHI"] + v["TIMESTAMPLO"]) / 100.0
+            t = 65536 * v["TIMESTAMPHI"] + v["TIMESTAMPLO"]
+            s["sensor_ts_ms"] = t / 1000.0 if self.is1900 else t / 100.0   # ILD1900: microseconds, ILD1420: 0.01 ms
         if "INTENSITY1" in v:
-            s["intensity_pct"] = round(v["INTENSITY1"] * 25.0 / 16368.0, 2)
+            s["intensity_pct"] = round(v["INTENSITY1"] * (100.0 / 1023.0 if self.is1900 else 25.0 / 16368.0), 2)
         if "SHUTTER" in v:
             s["shutter_us"] = v["SHUTTER"] / 10.0
         if "STATE" in v:
@@ -386,11 +436,9 @@ class SerialSource:
 
     def settings(self):
         sn = getattr(self, "snapshot", {})            # PRINT is read once while the sensor is idle; kept in sync by apply()
-        a = sn.get("AVERAGE", "NONE").split()
-        avg = {"mode": a[0], "depth": int(a[1]) if len(a) > 1 else None}
-        return {"rate_khz": self.rate_hz / 1000.0, "averaging": avg, "channels": self.wanted,
+        return {"rate_khz": self.rate_hz / 1000.0, "averaging": self.avg, "channels": self.wanted,
                 "channels_active": self.channels, "order": self.order, "raw": sn,
-                "options": dict(SERIAL_OPTIONS, rate_khz=[r for r in SERIAL_OPTIONS["rate_khz"] if r not in self.unsupported])}
+                "options": dict(self.options, rate_khz=[r for r in self.options["rate_khz"] if r not in self.unsupported])}
 
     def _set_rate(self, khz):
         if khz not in self.MEASRATES:
@@ -406,15 +454,15 @@ class SerialSource:
             self._set_channels(self._fit(self.wanted, self.rate_hz))   # back to the channel set of the old rate
             if "E236" in str(e):
                 self.unsupported.add(khz)
-                raise RuntimeError(f"sensor rejected {khz:g} kHz (E236). Laser class 1 ILD1420 models are limited to "
-                                   f"4 kHz (manual p.16). Rate stays {self.rate_hz / 1000:g} kHz.") from None
+                raise RuntimeError(f"sensor rejected {khz:g} kHz (E236); this unit's limit is lower (laser class 1 "
+                                   f"ILD1420 models stop at 4 kHz, manual p.16). Rate stays {self.rate_hz / 1000:g} kHz.") from None
             raise
         self.rate_hz = new
         self.snapshot["MEASRATE"] = f"{khz:.3f}"
 
     def apply(self, body):
         wanted = _check_channels(body["channels"]) if "channels" in body else None   # validate before touching the sensor
-        avg = _check_avg(body["averaging"]) if "averaging" in body else None
+        avg = _check_avg(body["averaging"], self.options) if "averaging" in body else None
         if "rate_khz" in body and float(body["rate_khz"]) not in self.MEASRATES:
             raise RuntimeError(f"MEASRATE must be one of {self.MEASRATES} kHz")
         with self._paused():
@@ -425,8 +473,12 @@ class SerialSource:
             if "rate_khz" in body:
                 self._set_rate(float(body["rate_khz"]))
             if avg is not None:
-                line = "AVERAGE NONE" if avg["mode"] == "NONE" else f"AVERAGE {avg['mode']} {avg['depth']}"
+                if self.is1900:     # averaging block 1 on channel CH01, applied to the distance signal
+                    line = "COMP CH01 1 NONE" if avg["mode"] == "NONE" else f"COMP CH01 1 {avg['mode']} DIST1 {avg['depth']}"
+                else:
+                    line = "AVERAGE NONE" if avg["mode"] == "NONE" else f"AVERAGE {avg['mode']} {avg['depth']}"
                 self._ok(line)
+                self.avg = avg
                 self.snapshot["AVERAGE"] = line[8:]
         return self.settings()
 
