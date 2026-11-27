@@ -1,0 +1,9 @@
+{
+  "three": "0.187.0",
+  "jspdf": "4.2.1",
+  "font_families": [
+    "Geist",
+    "Inter",
+    "JetBrains Mono"
+  ]
+}
