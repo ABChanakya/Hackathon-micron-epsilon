@@ -44,7 +44,7 @@ export function parseBridgeSample(payload, verifiedSensor = false) {
   }
   if (!finite(value) || (native && (!Number.isInteger(payload.n) || payload.n < 1))) return null;
   if (value < SENSOR.rangeStart || value > SENSOR.rangeEnd) return { error: 'range' };
-  return { value, led };
+  return { value, led, intensity: finite(payload.intensity) ? payload.intensity : null };
 }
 
 export function formatDuration(seconds) {
@@ -58,7 +58,7 @@ export function makeDemoPoints(duration = 60, offset = 0, phase = 0, target = SE
   return Array.from({ length: count + 1 }, (_, i) => {
     const t = i / DISPLAY_RATE;
     const signal = Math.sin(t * 1.23 + phase) * 0.011 + Math.sin(t * 4.7 + phase) * 0.003 + Math.sin(t * 0.31) * 0.004;
-    return { t, value: round(target + offset + signal) };
+    return { t, value: round(target + offset + signal), intensity: round(58 + Math.sin(t * 0.43 + phase) * 17 + Math.sin(t * 1.7) * 4) };
   });
 }
 
