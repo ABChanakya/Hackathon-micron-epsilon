@@ -212,3 +212,4 @@
 .factory-section .factory-grid[data-size="l"] { --tile: 235px; }
 .factory-section .factory-grid { scroll-snap-type: x proximity; }
 .factory-section .factory-module { scroll-snap-align: start; aspect-ratio: auto; min-height: var(--tile, 175px); }
+.factory-section .factory-live { justify-self: start; padding: 1px 6px; border-radius: 999px; background: #1f6b45; color: #fff; font: 700 .62em var(--mono); letter-spacing: .06em; }

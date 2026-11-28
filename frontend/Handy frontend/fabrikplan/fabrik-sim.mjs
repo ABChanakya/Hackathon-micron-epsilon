@@ -26,13 +26,20 @@ function spikeShape(age) {
 
 export function createFactorySim(heads) {
   const state = new Map(heads.map((head, index) => [head.key, {
-    head, profile: profiles[head.unit] ?? profiles.mm, phase: index * 1.7, fault: null, latched: false,
+    head, profile: profiles[head.unit] ?? profiles.mm, phase: index * 1.7, fault: null, latched: false, live: null,
   }]));
   let next = 0;
 
   function read(time) {
     const out = [];
     for (const [key, s] of state) {
+      if (s.live) {                                  // a real sensor drives this head: its own alarm decides
+        if (s.live.alarm) s.latched = true;
+        out.push({ key, value: s.live.value, unit: s.head.unit, digits: s.profile.digits, lower: s.profile.lower,
+          upper: s.profile.upper, live: true, reason: s.live.reason,
+          alarm: s.live.alarm ? 'active' : s.latched ? 'latched' : 'ok' });
+        continue;
+      }
       const age = s.fault === null ? -1 : time - s.fault;
       if (age > FAULT_SECONDS) s.fault = null;
       const value = baseValue(s.head.unit, time, s.phase) + s.profile.spike * spikeShape(age);
@@ -55,7 +62,12 @@ export function createFactorySim(heads) {
     },
     acknowledge(key) {
       const s = state.get(key);
-      if (s && s.fault === null) s.latched = false;     // an alarm that is still active cannot be acknowledged away
+      if (s && s.fault === null && !s.live?.alarm) s.latched = false;   // an active alarm cannot be acknowledged away
+    },
+    // Live data for one head ({ value, alarm: bool, reason }) or null to go back to the simulation.
+    setLive(key, live) {
+      const s = state.get(key);
+      if (s) s.live = live;
     },
     profile: (key) => state.get(key)?.profile,
   };

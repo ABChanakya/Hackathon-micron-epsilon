@@ -173,7 +173,7 @@ export function mountFactoryPlan(parent, { selectSensor }) {
       button.setAttribute('aria-controls', 'recorded-view');
       button.innerHTML = `<img class="factory-tile-model" alt="" hidden><span class="factory-tile-name"></span>
         <span class="factory-tile-quantity"></span><span class="factory-tile-value"><b>—</b> <small></small></span>
-        <span class="factory-tile-state">In Ordnung</span>`;
+        <span class="factory-tile-state">In Ordnung</span><span class="factory-live" hidden>LIVE</span>`;
       button.querySelector('.factory-tile-name').textContent = station.model + (head.suffix ? ' · Messkopf ' + head.suffix : '');
       button.querySelector('.factory-tile-quantity').textContent = station.quantity;
       button.querySelector('small').textContent = station.unit;
@@ -181,7 +181,7 @@ export function mountFactoryPlan(parent, { selectSensor }) {
       selectable.push(button);
       list.append(button);
       tilesByKey.set(head.key, { button, value: button.querySelector('b'), state: button.querySelector('.factory-tile-state'),
-        model: button.querySelector('.factory-tile-model'), head });
+        model: button.querySelector('.factory-tile-model'), live: button.querySelector('.factory-live'), head });
     }
     const ack = box.querySelector('.factory-ack');
     ack.addEventListener('click', () => { for (const head of own) sim.acknowledge(head.key); update(); });
@@ -274,14 +274,17 @@ export function mountFactoryPlan(parent, { selectSensor }) {
     const active = [];
     for (const r of readings) {
       const tile = tilesByKey.get(r.key);
-      tile.value.textContent = format(r.value, r.digits);
+      tile.value.textContent = r.value === null ? '—' : format(r.value, r.digits);
       tile.button.dataset.alarm = r.alarm;
-      tile.state.textContent = alarmText[r.alarm];
+      tile.state.textContent = alarmText[r.alarm] + (r.live && r.reason ? ' · ' + r.reason : '');
+      tile.live.hidden = !r.live;
       if (r.alarm === 'active') active.push(r);
       if (r.alarm === 'active' && seen.get(r.key) !== 'active') {
         const head = tile.head;
-        status.textContent = 'Alarm: ' + head.label + ': ' + format(r.value, r.digits) + ' ' + r.unit
-          + ' (Grenzen ' + format(r.lower, r.digits) + '–' + format(r.upper, r.digits) + ' ' + r.unit + ')';
+        status.textContent = r.live
+          ? 'Alarm (live): ' + head.label + ': ' + (r.value === null ? '—' : format(r.value, r.digits) + ' ' + r.unit) + ' · ' + r.reason
+          : 'Alarm: ' + head.label + ': ' + format(r.value, r.digits) + ' ' + r.unit
+            + ' (Grenzen ' + format(r.lower, r.digits) + '–' + format(r.upper, r.digits) + ' ' + r.unit + ')';
       }
       seen.set(r.key, r.alarm);
     }
@@ -307,6 +310,44 @@ export function mountFactoryPlan(parent, { selectSensor }) {
     status.textContent = 'Fehler simuliert: ' + head.label + '.';
   });
   setInterval(() => { if (!content.hidden) update(); }, 200);
+
+  // ---- live sensor --------------------------------------------------------------------------------
+  // When the measuring server has a verified, live sensor, it drives one module of the plan: the ILD1900 is
+  // "Qualitätskontrolle · Messkopf A", the thermoMETER "Mechanische Bearbeitung". Its alarm is the server's: the AI
+  // flags something (or recognises a taught anomaly) or there is no valid reading.
+  const liveHead = { ild1900: 'Qualitätskontrolle|A', thermo_uc: 'Mechanische Bearbeitung|' };
+  const reasons = { mean: 'Messwert verschoben', std: 'Rauschen erhöht', p2p: 'Schwankung erhöht', slope: 'Ungewöhnlicher Verlauf',
+    jitter: 'Unruhiges Signal', err_frac: 'Ungültige Messwerte', intensity: 'Signalstärke verändert', no_match: 'Passt zu keinen bekannten Daten' };
+  let liveKey = null, liveSeen = 0, polling = false;
+  async function pollLive() {
+    if (content.hidden || polling) return;
+    polling = true;
+    try {
+      const response = await fetch('/api/latest', { cache: 'no-store' });
+      const frame = response.ok ? await response.json() : null;
+      const device = frame?.device;
+      const key = frame?.status === 'streaming' && device?.live && device.verified ? liveHead[device.family] : null;
+      if (liveKey && liveKey !== key) sim.setLive(liveKey, null);
+      if (key) {
+        const ml = frame.ml || {};
+        const known = ml.known?.label_note;
+        const invalid = frame.current_valid === false;
+        const alarm = invalid || ml.state === 'alert';
+        const reason = invalid ? (frame.last_error?.text || 'Kein gültiger Messwert')
+          : alarm ? 'KI: ' + (known ? 'Bekannte Anomalie · ' + known : reasons[ml.reason] || 'Auffälligkeit')
+          : ml.state === 'learning' ? 'KI lernt' : 'KI überwacht';
+        const value = device.unit === '°C' ? frame.raw_value : frame.dist_from_face_mm;
+        sim.setLive(key, { value: Number.isFinite(value) && !invalid ? value : null, alarm, reason });
+        liveSeen = performance.now();
+      }
+      liveKey = key;
+    } catch {
+      if (liveKey && performance.now() - liveSeen > 3000) { sim.setLive(liveKey, null); liveKey = null; }
+    } finally {
+      polling = false;
+    }
+  }
+  setInterval(pollLive, 400);
 
   // ---- open / close ----------------------------------------------------------------------------
   toggle.addEventListener('click', () => {
