@@ -2,9 +2,9 @@ import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 
 const LED_COLORS = {
-  green: 0x50d8a2,
-  yellow: 0xf1c96b,
-  red: 0xee6c72,
+  green: 0x32efaa,
+  yellow: 0xffd05a,
+  red: 0xff545e,
   off: 0x17212a,
   unknown: 0x77828c,
 };
@@ -30,6 +30,15 @@ function normalizedStatus(value) {
   return Object.hasOwn(LED_COLORS, value) ? value : 'unknown';
 }
 
+function updateLedButton(button, name, value) {
+  const title = `${name === 'state' ? 'State' : 'Output'}-LED: ${LED_MEANINGS[name][value]}`;
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  button.dataset.state = value;
+  button.dataset.lit = String(value !== 'off' && value !== 'unknown');
+  button.style.setProperty('--led-glow', `#${LED_COLORS[value].toString(16).padStart(6, '0')}`);
+}
+
 function makeFallback(container, onSelect, initialState) {
   const wrapper = document.createElement('div');
   wrapper.className = 'sensor3d-fallback';
@@ -47,8 +56,9 @@ function makeFallback(container, onSelect, initialState) {
   for (const name of ['state', 'output']) {
     const button = document.createElement('button');
     button.type = 'button';
+    button.className = 'sensor3d-fallback-led';
     button.textContent = name === 'state' ? 'State-LED' : 'Output-LED';
-    button.style.cssText = 'min-height:34px;border:1px solid currentColor;border-radius:2px;padding:4px 9px;background:transparent;color:inherit;font:inherit;font-size:10px;cursor:pointer';
+    button.style.cssText = 'min-height:34px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--surface);color:inherit;font:inherit;font-size:11px;cursor:pointer';
     button.onclick = () => onSelect?.(name);
     buttons[name] = button;
     row.append(button);
@@ -59,8 +69,7 @@ function makeFallback(container, onSelect, initialState) {
     for (const name of ['state', 'output']) {
       if (status[name] !== undefined) currentStatus[name] = normalizedStatus(status[name]);
       const value = currentStatus[name];
-      buttons[name].title = LED_MEANINGS[name][value];
-      buttons[name].setAttribute('aria-label', `${buttons[name].textContent}: ${LED_MEANINGS[name][value]}`);
+      updateLedButton(buttons[name], name, value);
       buttons[name].style.boxShadow = `inset 3px 0 #${LED_COLORS[value].toString(16).padStart(6, '0')}`;
     }
   };
@@ -104,7 +113,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50);
-  const initialCamera = new THREE.Vector3(2.85, 2.70, 5.65);
+  const initialCamera = new THREE.Vector3(2.6, 3.7, 5.2);
   camera.position.copy(initialCamera);
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.25, 0);
@@ -119,11 +128,11 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   controls.update();
   controls.saveState();
 
-  scene.add(new THREE.HemisphereLight(0xf2eef7, 0x292331, 2.3));
-  const keyLight = new THREE.DirectionalLight(0xfff5ea, 4);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x4c5965, 2.1));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 3.8);
   keyLight.position.set(3, 6, 5);
   scene.add(keyLight);
-  const fillLight = new THREE.DirectionalLight(0xe4dbe9, 2.1);
+  const fillLight = new THREE.DirectionalLight(0xe2ebf3, 2.1);
   fillLight.position.set(-5, 1, 3);
   scene.add(fillLight);
   const rimLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -282,15 +291,42 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   consoleLabel('SELECT', -1.05, 0.24);
 
   const ledMeshes = {};
+  const ledGlows = {};
   const ledButtons = {};
   const currentStatus = { state: 'unknown', output: 'unknown' };
+
+  // A shared radial texture gives the actual emitters a soft halo without a post-processing pass.
+  // Depth testing keeps the light behind the housing when the sensor is viewed from below.
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.width = glowCanvas.height = 128;
+  const glowContext = glowCanvas.getContext('2d');
+  const glowGradient = glowContext.createRadialGradient(64, 64, 0, 64, 64, 64);
+  glowGradient.addColorStop(0, 'rgba(255,255,255,1)');
+  glowGradient.addColorStop(0.12, 'rgba(255,255,255,0.9)');
+  glowGradient.addColorStop(0.32, 'rgba(255,255,255,0.4)');
+  glowGradient.addColorStop(0.62, 'rgba(255,255,255,0.08)');
+  glowGradient.addColorStop(1, 'rgba(255,255,255,0)');
+  glowContext.fillStyle = glowGradient;
+  glowContext.fillRect(0, 0, 128, 128);
+  const glowTexture = new THREE.CanvasTexture(glowCanvas);
+  textures.push(glowTexture);
+
   for (const [name, x] of [['state', -0.05], ['output', -0.35]]) {
     addMesh(new THREE.CylinderGeometry(0.072, 0.072, 0.017, 24), black, [x, 0.902, 0]);
-    const material = new THREE.MeshStandardMaterial({ color: LED_COLORS.unknown, emissive: LED_COLORS.unknown, emissiveIntensity: 0.2, roughness: 0.22 });
+    const material = new THREE.MeshStandardMaterial({ color: LED_COLORS.unknown, emissive: LED_COLORS.unknown,
+      emissiveIntensity: 0, roughness: 0.18, toneMapped: false });
     const mesh = addMesh(new THREE.SphereGeometry(0.046, 20, 12), material, [x, 0.913, 0]);
     mesh.scale.y = 0.5;
     mesh.userData.ledName = name;
     ledMeshes[name] = mesh;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture, color: LED_COLORS.unknown,
+      transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, toneMapped: false }));
+    glow.position.set(x, 0.945, 0);
+    glow.scale.set(0.36, 0.36, 1);
+    glow.visible = false;
+    glow.raycast = () => {}; // The halo must not intercept clicks intended for the physical LED.
+    sensor.add(glow);
+    ledGlows[name] = glow;
     consoleLabel(name.toUpperCase(), x, 0.24);
 
     const button = document.createElement('button');
@@ -310,7 +346,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   const quaternion = new THREE.Quaternion();
   function render() {
     if (disposed) return;
-    renderer.render(scene, camera);
+    camera.updateMatrixWorld();
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     sensor.getWorldQuaternion(quaternion);
@@ -319,6 +355,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
       ledMeshes[name].getWorldPosition(position);
       direction.copy(camera.position).sub(position);
       const controlsVisible = normal.dot(direction) > 0;
+      ledGlows[name].visible = controlsVisible && !['off', 'unknown'].includes(currentStatus[name]);
       position.project(camera);
       return {
         button: ledButtons[name],
@@ -338,6 +375,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
       button.style.width = button.style.height = `${Math.max(1, size)}px`;
       button.style.visibility = visible && size >= 5 ? 'visible' : 'hidden';
     }
+    renderer.render(scene, camera);
   }
 
   const setStatus = (status = {}) => {
@@ -347,10 +385,9 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
       const material = ledMeshes[name].material;
       material.color.setHex(LED_COLORS[value]);
       material.emissive.setHex(LED_COLORS[value]);
-      material.emissiveIntensity = value === 'off' || value === 'unknown' ? 0.04 : 0.65;
-      const title = `${name === 'state' ? 'State' : 'Output'}-LED: ${LED_MEANINGS[name][value]}`;
-      ledButtons[name].title = title;
-      ledButtons[name].setAttribute('aria-label', title);
+      material.emissiveIntensity = value === 'off' || value === 'unknown' ? 0 : 1.8;
+      ledGlows[name].material.color.setHex(LED_COLORS[value]);
+      updateLedButton(ledButtons[name], name, value);
     }
     const laserActive = !['off', 'unknown'].includes(currentStatus.state);
     laserMaterial.emissiveIntensity = laserActive ? 0.6 : 0;
@@ -430,7 +467,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
       const geometries = new Set();
       const materials = new Set();
       scene.traverse(object => {
-        if (object.geometry) geometries.add(object.geometry);
+        if (object.geometry && !object.isSprite) geometries.add(object.geometry);
         const objectMaterials = Array.isArray(object.material) ? object.material : [object.material];
         for (const material of objectMaterials) if (material) materials.add(material);
       });

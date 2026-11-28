@@ -1,6 +1,6 @@
 # Sensor backend
 
-FastAPI service between a Micro-Epsilon ILD1420 sensor (or a simulator, or a recording) and the web UI.
+FastAPI service between a Micro-Epsilon ILD1420/ILD1900 sensor (or a simulator, or a recording) and the web UI.
 The API contract is in [API.md](API.md).
 
 ## Run
@@ -9,13 +9,19 @@ cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app:app --port 8000
 ```
-Open http://localhost:8000. The test page connects to the simulator. Put the UI build into `static/`.
+Open http://localhost:8000. The backend serves the monitor from `../frontend/dist/`, so the dashboard, API and WebSocket
+share one origin. The static paths work independently of the server's working directory.
+The server starts disconnected and does not select or reconfigure a sensor automatically.
+The old API test page remains available at http://localhost:8000/diagnostics/; its source controls are explicit actions.
+For a backend-only checkout without `frontend/dist/index.html`, that test page is also used as the home page.
 
 Connect the real sensor (macOS port name shown; on Linux it is `/dev/ttyUSB0`):
 ```
 curl -X POST localhost:8000/api/connect -H 'content-type: application/json' \
      -d '{"sensor":"ILD1420-serial","port":"/dev/cu.usbserial-000101"}'
 ```
+The same serial source detects an ILD1900 automatically. Use `GET /api/sensors/scan` to find the actual USB port;
+the port above is an example. `pyserial` is included in `requirements.txt`.
 While connected the sensor streams over RS422 and its 4-20 mA analog output is off. Disconnecting, or stopping the server
 with Ctrl+C, switches it back. If the server is killed hard (`kill -9`), reconnect and disconnect once to restore it.
 
@@ -49,3 +55,10 @@ curl -X POST localhost:8000/api/record/start -H 'content-type: application/json'
 
 Recordings are in `recordings/` (CSV plus a `.json` with label and stats). Play one back without the sensor:
 `{"sensor":"REPLAY","file":"rec_….csv"}` on `/api/connect`.
+
+## Tests
+From `backend/`, install `requirements-dev.txt`, then run:
+```
+python -m unittest discover -s tests
+```
+The checks use an isolated in-process simulator and do not open a serial port or contact a running backend.

@@ -6,17 +6,19 @@ Das interaktive 3D-Modell orientiert sich an Maßzeichnung und Bedienfeld der Be
 
 ## Starten
 
-Im Projektordner mit Python 3:
+Im Repository mit Python 3.10 oder neuer:
 
 ```sh
-python3 -m http.server 4173 --directory dist --bind 127.0.0.1
+./start.sh
 ```
 
-Öffne anschließend http://127.0.0.1:4173/. HTML, CSS, JavaScript, Schriften und Bibliotheken liegen in `dist/`. Der Ordner kann direkt mit einem statischen Webserver bereitgestellt werden.
+Öffne anschließend http://127.0.0.1:8000/ und wähle **Sensor verbinden**. Alternativ startet `npm start` im Ordner `frontend/` denselben Messserver. Dashboard, API und WebSocket teilen sich einen Ursprung. Eine bereits laufende Messung wird automatisch angezeigt.
+
+HTML, CSS, JavaScript, Schriften und Bibliotheken liegen in `dist/`. Für eine reine statische Ansicht steht `npm run start:static` bereit; Live-Daten benötigen den Messserver am selben Ursprung oder einen passenden Proxy.
 
 ## Datenquelle
 
-Die Demo zeigt fünf simulierte Werte pro Sekunde. Die Profilrate beschreibt die vorgesehene Sensoreinstellung. Der Sensor bietet sieben feste Messraten von 250 Hz bis 10 kHz. Aufzeichnungen und Profile liegen im Browser.
+Standardmäßig wird die Live-Verbindung geprüft. Die Demo wird ausdrücklich über die Datenquellenauswahl aktiviert und zeigt fünf simulierte Werte pro Sekunde. Die Profilrate beschreibt die vorgesehene Sensoreinstellung. Der Sensor bietet sieben feste Messraten von 250 Hz bis 10 kHz. Aufzeichnungen und Profile liegen im Browser. Wiedergaben bleiben auch in neu erstellten Aufnahmen und Exporten als Wiedergabe gekennzeichnet.
 
 ### Messbrücke
 

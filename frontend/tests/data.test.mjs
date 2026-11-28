@@ -201,6 +201,11 @@ test('real PDF export uses selected-window learning state and application time',
     engine.exportReportPDF(recording, { start: 40, end: 60 });
     assert.ok(captured.some(text => /Version 2/.test(text)));
     assert.match(captured.join(' '), /00:40 - Version 2/);
+    recording.source = 'replay';
+    captured = [];
+    engine.exportReportPDF(recording, { start: 0, end: 20 });
+    assert.match(captured.join(' '), /Quelle: Wiedergabe.*gespeicherte Messwerte/);
+    assert.doesNotMatch(captured.join(' '), /Quelle: Sensor/);
   } finally { delete globalThis.jspdf; }
 });
 
@@ -251,4 +256,99 @@ test('only live backend status for the 10 mm ILD1900 can identify the input sens
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, smr_mm: 25 } }), false);
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, unit: 'inch' } }), false);
   assert.equal(engine.matchesBackendSensor({ ...status, source: 'replay' }), true);
+});
+
+test('native frames verify their current model and range without trusting a previous source', () => {
+  const frame = {
+    status: 'streaming', source: 'serial-ild1900', n: 120,
+    info: { model: 'ILD1900', range_mm: 10, smr_mm: 20, unit: 'mm' },
+    dist_from_face_mm: 25.123, current_valid: true, state_flags: { led: 'green' },
+  };
+  assert.deepEqual(engine.parseBridgeSample(frame), {
+    value: 25.123, led: { state: 'green', output: 'green' },
+  });
+  assert.deepEqual(engine.parseBridgeSample({ ...frame, source: 'replay' }), {
+    value: 25.123, led: { state: 'green', output: 'unknown' },
+  });
+  for (const info of [
+    { ...frame.info, model: 'ILD1420-50', range_mm: 50, smr_mm: 35 },
+    { ...frame.info, range_mm: 25 },
+    { ...frame.info, smr_mm: 25 },
+    { ...frame.info, unit: 'inch' },
+    null,
+  ]) {
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, info }, true), { error: 'model' });
+  }
+  assert.deepEqual(engine.parseBridgeSample({ ...frame, sensor: 'ILD1420-50' }, true), { error: 'model' });
+});
+
+test('the project bridge identifies generic ILD1900 models by the full measuring window', () => {
+  const frame = {
+    sensor: 'ILD1900', value: 25.123, unit: 'mm', state: 'green', output: 'green',
+    range_start: 20, range_end: 30, range: 10,
+  };
+  assert.deepEqual(engine.parseBridgeSample(frame), {
+    value: 25.123, led: { state: 'green', output: 'green' },
+  });
+  assert.deepEqual(engine.parseBridgeSample({ sensor: 'ILD1900', value: 25, unit: 'mm' }), { error: 'unverified' });
+  assert.deepEqual(engine.parseBridgeSample({ sensor: 'ILD1900', value: 25, unit: 'mm' }, true), {
+    value: 25, led: { state: 'unknown', output: 'unknown' },
+  });
+  for (const wrong of [{ range_start: 25 }, { range_end: 35 }, { range: 25 }, { sensor: 'ILD1420-50' }]) {
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, ...wrong }, true), { error: 'model' });
+  }
+  assert.deepEqual(engine.parseBridgeSample({ ...frame, sensor: 'ILD1900-10', range_start: 35 }), { error: 'model' });
+});
+
+test('invalid live frames never display the backend retained last good reading', () => {
+  const frame = {
+    status: 'streaming', source: 'serial-ild1900', n: 120,
+    info: { model: 'ILD1900-10', range_mm: 10, smr_mm: 20, unit: 'mm' },
+    dist_from_face_mm: 25.123, current_valid: false, state_flags: null,
+  };
+  assert.deepEqual(engine.parseBridgeSample(frame), { error: 'signal' });
+  for (const invalid of [
+    { value: null },
+    { value: 25, current_valid: false },
+    { value: 25, state: 'red' },
+    { value: 25, state: 'off' },
+    { value: 25, error: 'no peak/edge' },
+  ]) {
+    assert.deepEqual(engine.parseBridgeSample({ unit: 'mm', sensor: 'ILD1900-10', ...invalid }), { error: 'signal' });
+  }
+});
+
+test('invalid native measurements retain independent State and Output LEDs', () => {
+  const frame = {
+    status: 'streaming', source: 'serial-ild1900', n: 0,
+    info: { model: 'ILD1900-10', range_mm: 10, smr_mm: 20, unit: 'mm' },
+    dist_from_face_mm: null, current_valid: false, state: 131332, state_flags: { led: 'red' },
+  };
+  assert.deepEqual(engine.bridgeLedState(frame), { state: 'red', output: 'green' });
+  assert.deepEqual(engine.parseBridgeSample(frame), { error: 'signal' });
+  const laserOff = { ...frame, state_flags: { led: 'off' } };
+  assert.deepEqual(engine.bridgeLedState(laserOff), { state: 'off', output: 'green' });
+  assert.deepEqual(engine.parseBridgeSample(laserOff), { error: 'signal' });
+});
+
+test('declared Output LEDs override serial inference including unknown and off', () => {
+  const frame = { dist_from_face_mm: 25, source: 'serial-ild1900', state_flags: { led: 'green' } };
+  for (const output of ['green', 'yellow', 'red', 'off', 'unknown']) {
+    assert.deepEqual(engine.bridgeLedState({ ...frame, output }), { state: 'green', output });
+  }
+  for (const output of [null, undefined, 'invalid']) {
+    assert.deepEqual(engine.bridgeLedState({ ...frame, output }), { state: 'green', output: 'unknown' });
+  }
+  assert.deepEqual(engine.bridgeLedState({ ...frame, source: 'replay' }), { state: 'green', output: 'unknown' });
+});
+
+test('native raw numeric status is not interpreted as an LED colour', () => {
+  const frame = { dist_from_face_mm: 25, source: 'serial-ild1900', state: 65792 };
+  assert.deepEqual(engine.bridgeLedState(frame), { state: 'unknown', output: 'green' });
+  assert.deepEqual(engine.bridgeLedState({ ...frame, state_flags: { led: 'yellow' } }), {
+    state: 'yellow', output: 'green',
+  });
+  assert.deepEqual(engine.bridgeLedState({ unit: 'mm', value: null, state: 'red', output: 'green' }), {
+    state: 'red', output: 'green',
+  });
 });

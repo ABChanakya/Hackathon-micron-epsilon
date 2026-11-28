@@ -1,7 +1,9 @@
 # Sensor backend API
 
 Base URL: `http://localhost:8000`. Run `uvicorn app:app --port 8000` in `backend/`.
-The backend also serves the UI from `backend/static/`, so the UI and the API share one origin and CORS is not needed.
+The backend also serves the monitor from `frontend/dist/`, so the UI and the API share one origin and CORS is not needed.
+The legacy API test page is at `/diagnostics/` (and at `/` when the frontend checkout is absent).
+Starting the server leaves the source disconnected; only `POST /api/connect` selects or changes a source.
 All bodies are JSON. Errors come back as HTTP 400 `{"detail": "<message>"}`, with 404 or 409 where noted.
 
 ## Concepts
@@ -22,7 +24,7 @@ Returned by `/api/status`, `/api/connect`, `/api/disconnect`, `/api/record/*`, `
 {
   "status": "disconnected | streaming | error",
   "error": "",
-  "source": "sim | serial-ild1420 | replay | medaqlib | null",
+  "source": "sim | serial-ild1420 | serial-ild1900 | replay | medaqlib | null",
   "info": {"model": "ILD1420-50", "serial": "15060171", "range_mm": 50.0, "smr_mm": 35, "firmware": "000.018", "unit": "mm"},
   "recording": false, "rec_file": null, "rec_samples": 0, "rec_label": null,
   "rec_until_s": null,              // seconds left of a timed recording
@@ -95,6 +97,8 @@ Server → client only, about 25 frames/s while streaming:
 ```json
 {
   "t": 3508.4,                          // s, monotonic clock (x-axis spacing, not wall time)
+  "source": "serial-ild1420",            // sim | serial-ild1420 | serial-ild1900 | replay | medaqlib
+  "info": {"model": "ILD1420-50", "serial": "15060171", "range_mm": 50, "smr_mm": 35, "unit": "mm"},
   "value": 8.42,                        // latest valid distance (mm, tare applied), null if none in the last 1 s
   "min": 8.40, "max": 44.18, "mean": 25.1,   // last 1 s of valid readings (tare applied), null if none
   "n": 1997,                            // valid readings in that window
@@ -114,6 +118,8 @@ Server → client only, about 25 frames/s while streaming:
 }
 ```
 - Any field can be `null`. The extra fields are null when their channel is off.
+- Every frame carries `source` and the current source's `info`, including replay labels when available. Clients can
+  detect source/model changes without another status request and distinguish live measurements from playback.
 - `state_flags.led` mirrors the LED on the sensor: green = target in range, yellow = mid range, red = error, off = laser off.
 - `last_error.code`: 3 too much data for baudrate, 4 no peak, 5 peak before range, 6 peak after range, 7 cannot be calculated,
   8 global error, 9 peak too wide, 10 laser off.
@@ -127,6 +133,8 @@ About 25 messages per second:
   "value": 24.375,            // mm FROM THE SENSOR FACE (not from the start of the range). null = nothing valid right now
   "unit": "mm",
   "sensor": "ILD1900",        // the real model name from the sensor
+  "source": "serial-ild1900",  // "replay" for recorded data, "sim" for simulation
+  "current_valid": true,      // false for a received frame without a valid measurement
   "state": "green",           // status LED: green | yellow | red | off | unknown
   "output": "green",          // output LED: "green" while the RS422 stream runs
   "serial": "00323100070",
@@ -135,17 +143,14 @@ About 25 messages per second:
   "error": null               // text such as "no peak/edge" when value is null
 }
 ```
-- `value` is the latest reading (the tare is **not** applied: the website has its own zero). Messages with `value: null` are sent
-  while nothing is in range, so that a UI can show "no target" with the reason in `error`. The current website ignores them.
-- The first five fields are exactly what the website reads today. The rest is extra, for UIs that adapt to the sensor.
+- `value` is the latest reading (the tare is **not** applied: the website has its own zero). Messages with `value: null` and
+  `current_valid: false` mean that a frame arrived without a valid measurement. A UI should show "no target" with `error`,
+  keep its connection alive and avoid adding a measurement point.
+- Check the sensor model and measuring window before displaying values. `source` distinguishes hardware, simulation and replay.
 - A browser page served over `https://` may refuse `ws://localhost` (Safari does). Open the website over `http://` locally.
 
-**What the website must change before it can show our sensors** (not done, it is the UI team's code):
-1. `frontend/dist/data.js` fixes the sensor as `optoNCDT 1420-25`, range 25-50 mm (`SENSOR`), and `connectBridge` rejects every
-   message with a different `sensor` or a `value` outside 25-50 mm. Our sensors are an ILD1420-50 (35-85 mm) and an ILD1900-10
-   (20-30 mm). Read `sensor`, `range_start`, `range_end` and `range` from the first message and use them instead of the constants.
-2. `connectBridge` shows "no valid values" after 8 s without a finite `value`. With a target out of range that is the normal case:
-   treat `value: null` as "no target" (show `error`), not as a lost connection.
+The included monitor is configured for the optoNCDT 1900-10 (20–30 mm from the face). Other connected models remain
+available through this API and the diagnostics page; clients must validate model and range against their selected profile.
 
 ## Recordings
 `backend/recordings/rec_YYYYMMDD_HHMMSS.csv`, with one row per sensor sample:

@@ -280,8 +280,9 @@ class Hub:
                 off = self.tare or 0.0
                 last_valid = ys[-1] if ys else None
                 lt = self.latest
-                smr = (getattr(self.src, "info", {}) or {}).get("smr_mm")
-                frame = {"t": now,
+                info = dict(getattr(self.src, "info", {}) or {})
+                smr = info.get("smr_mm")
+                frame = {"t": now, "source": self.src.kind, "info": info,
                          "value": None if last_valid is None else last_valid - off,
                          "min": min(ys) - off if ys else None, "max": max(ys) - off if ys else None,
                          "mean": sum(ys) / len(ys) - off if ys else None,
@@ -304,14 +305,15 @@ class Hub:
 
     def bridge_message(self, f):
         """The message format of the sensor-monitor website's 'local sensor bridge' (frontend/dist/app.js connectBridge):
-        value (mm from the sensor face), unit, sensor, state (status LED) and output (output LED). The UI ignores messages
-        without a finite value, so no-target frames are sent with value null and are harmless. The extra fields let a
-        UI adapt to the connected sensor instead of hardcoding one."""
+        value (mm from the sensor face), unit, sensor, state (status LED) and output (output LED). No-target frames have
+        value null and current_valid false so clients can distinguish invalid measurements from a lost connection.
+        Source and measuring-window metadata let clients validate the connected sensor."""
         info = getattr(self.src, "info", None) or {}
         smr, rng = info.get("smr_mm"), info.get("range_mm")
         led = (f.get("state_flags") or {}).get("led")
         valid = f.get("current_valid") and f.get("dist_from_face_mm") is not None
         return {"value": round(f["dist_from_face_mm"], 4) if valid else None, "unit": "mm", "sensor": info.get("model"),
+                "current_valid": bool(valid),
                 "state": led if led in self.LEDS else "unknown",
                 "output": "green" if f.get("status") == "streaming" else "unknown",
                 "source": getattr(self.src, "kind", None),   # e.g. serial-ild1900 (live) or replay

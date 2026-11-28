@@ -16,6 +16,15 @@ const exactModel = model => ['ild190010', 'optoncdt190010', '190010'].includes(s
 const ledColors = new Set(['green', 'yellow', 'red', 'off', 'unknown']);
 const ledColor = color => ledColors.has(color) ? color : 'unknown';
 
+export function bridgeLedState(payload) {
+  const native = Object.hasOwn(payload, 'dist_from_face_mm');
+  const serial = typeof payload.source === 'string' && payload.source.startsWith('serial-');
+  return {
+    state: ledColor(native ? (payload.state_flags?.led ?? payload.state) : payload.state),
+    output: ledColor(Object.hasOwn(payload, 'output') ? payload.output : serial ? 'green' : 'unknown'),
+  };
+}
+
 export function matchesBackendSensor(status) {
   const info = status?.info;
   return Boolean(info &&
@@ -26,20 +35,31 @@ export function matchesBackendSensor(status) {
 export function parseBridgeSample(payload, verifiedSensor = false) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const native = Object.hasOwn(payload, 'dist_from_face_mm');
-  const model = payload.sensor;
   if (!native && payload.unit !== 'mm') return null;
   if (native && payload.status !== 'streaming') return null;
-  if (model != null && !exactModel(model) && !(native && verifiedSensor && sensorCode(model) === 'ild1900')) {
+
+  // New backend frames carry identity on every sample, so a source change cannot
+  // reuse the model verification of the previous sensor or recording.
+  const hasInfo = Object.hasOwn(payload, 'info');
+  const infoMatches = hasInfo && matchesBackendSensor(payload);
+  if (hasInfo && !infoMatches) return { error: 'model' };
+  const rangeFields = { range_start: SENSOR.rangeStart, range_end: SENSOR.rangeEnd, range: SENSOR.range };
+  if (Object.entries(rangeFields).some(([key, expected]) => Object.hasOwn(payload, key) && payload[key] !== expected)) {
     return { error: 'model' };
   }
-  if (native && !verifiedSensor && !exactModel(model)) return { error: 'unverified' };
+  const bridgeRangeMatches = Object.entries(rangeFields).every(([key, expected]) => payload[key] === expected);
+  const model = payload.sensor ?? payload.info?.model;
+  const genericModel = sensorCode(model) === 'ild1900';
+  if (model != null && !exactModel(model) && !genericModel) {
+    return { error: 'model' };
+  }
+  if ((native || genericModel) && !verifiedSensor && !infoMatches &&
+      !(genericModel && bridgeRangeMatches) && !exactModel(model)) return { error: 'unverified' };
 
   const value = native ? payload.dist_from_face_mm : payload.value;
-  const led = {
-    state: ledColor(native ? (payload.state_flags?.led ?? payload.state) : payload.state),
-    output: ledColor(payload.output),
-  };
-  if (native && (value === null || payload.n === 0 || led.state === 'red' || led.state === 'off')) {
+  const led = bridgeLedState(payload);
+  if (value === null || payload.current_valid === false || led.state === 'red' || led.state === 'off' ||
+      (native && payload.n === 0) || (typeof payload.error === 'string' && payload.error.trim())) {
     return { error: 'signal' };
   }
   if (!finite(value) || (native && (!Number.isInteger(payload.n) || payload.n < 1))) return null;
@@ -252,12 +272,12 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
   const initialLearning = learningAt(Number(start));
   const finalLearning = learningAt(Number(end));
   const summary = statistics(points);
-  const ink = [36, 31, 45];
-  const muted = [101, 88, 111];
-  const copper = [158, 68, 41];
-  const paper = [246, 244, 242];
-  const corridor = [232, 230, 233];
-  const rule = [209, 204, 213];
+  const ink = [17, 21, 26];
+  const muted = [79, 90, 102];
+  const copper = [196, 20, 31];
+  const paper = [238, 240, 242];
+  const corridor = [227, 231, 235];
+  const rule = [207, 213, 219];
   const text = (value, x, y, size = 10, color = ink, options) => {
     doc.setFontSize(size);
     doc.setTextColor(...color);
@@ -285,7 +305,7 @@ export function exportReportPDF(recording, { start = 0, end = recording.duration
   profileLines.forEach((line, index) => text(line, 18, 58 + nameExtra + index * 4, 9, muted));
   const headerExtra = nameExtra + (profileLines.length - 1) * 4;
   const isDemo = recording.source === 'demo';
-  const source = isDemo ? 'Demo · simulierte Messwerte' : recording.source === 'sensor' ? 'Sensor · Messbrücke' : recording.source;
+  const source = isDemo ? 'Demo · simulierte Messwerte' : recording.source === 'replay' ? 'Wiedergabe · gespeicherte Messwerte' : recording.source === 'sensor' ? 'Sensor · Messbrücke' : recording.source;
   text(`Quelle: ${source}`, 18, 65 + headerExtra, 9, isDemo ? copper : muted);
 
   const x = 30, y = 78 + headerExtra, width = 160, height = 60;

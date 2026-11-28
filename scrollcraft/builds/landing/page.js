@@ -10,7 +10,7 @@
   if (!I[code]) code = 'de';
   var T = I[code];
   var WS_URL = params.get('ws') || 'ws://localhost:8000/ws/bridge';
-  var MONITOR_URL = params.get('monitor') || 'http://127.0.0.1:4173/';
+  var MONITOR_URL = params.get('monitor') || 'http://127.0.0.1:8000/';
 
   var fmt = function (v, d) {
     return new Intl.NumberFormat(T._locale, { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }).format(v);

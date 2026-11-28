@@ -4,6 +4,9 @@ A one-page showcase for the 5-minute pitch. Built with the ScrollCraft skill (gr
 Brief and decisions: [BRIEF.md](BRIEF.md).
 
 ## Open it
+With the unified server, run `./start.sh` from the repository root and open http://127.0.0.1:8000/pitch/.
+The monitor and live bridge use that same server. For a standalone static preview:
+
 ```
 cd scrollcraft/builds/landing
 python3 -m http.server 4500
@@ -14,7 +17,7 @@ Then open http://localhost:4500. Opening `index.html` directly also works.
 - **Live mode** (the "Live schalten" button in the curve section): needs the project backend on port 8000 with a sensor
   connected (`backend/`, `/ws/bridge`). Without it the page says so and keeps playing the recording. If the backend is
   replaying a recording, the badge says "Wiedergabe", never "Live". Other address: `?ws=ws://host:8000/ws/bridge`.
-- **"Monitor öffnen"** links to the monitor website at http://127.0.0.1:4173/ (start it from `frontend/`).
+- **"Monitor öffnen"** links to the monitor website at http://127.0.0.1:8000/ (start it with `./start.sh` or from `frontend/`).
   Other address: `?monitor=http://...`.
 
 ## What is real

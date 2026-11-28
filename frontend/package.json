@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 4173 --directory dist --bind 127.0.0.1",
-    "test": "node --test tests/data.test.mjs"
+    "start": "../start.sh",
+    "start:static": "python3 -m http.server 4173 --directory dist --bind 127.0.0.1",
+    "test": "node --test tests/*.test.mjs"
   }
 }

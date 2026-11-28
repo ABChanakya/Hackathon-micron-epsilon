@@ -222,4 +222,11 @@ async def bridge(ws: WebSocket):
 
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")  # drop the Stitch export here
+FRONTEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
+LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrollcraft", "builds", "landing")
+# Keep the diagnostic controls available while the monitor and its API share one origin.
+app.mount("/diagnostics", StaticFiles(directory=STATIC, html=True), name="diagnostics")
+if os.path.isfile(os.path.join(LANDING, "index.html")):
+    app.mount("/pitch", StaticFiles(directory=LANDING, html=True), name="pitch")
+app.mount("/", StaticFiles(directory=FRONTEND if os.path.isfile(os.path.join(FRONTEND, "index.html")) else STATIC,
+                           html=True), name="static")
