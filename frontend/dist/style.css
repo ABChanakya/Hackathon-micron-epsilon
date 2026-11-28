@@ -602,3 +602,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .factory-host .factory-marker { min-height: 44px; padding: 2px; border-color: transparent; background: transparent; }
 .factory-host .factory-tile { min-height: 44px; padding: .35rem .45rem; border-radius: 6px; background: #111a24; }
 .factory-host .factory-ack { padding: 6px 12px; border-radius: 6px; background: var(--surface2); }
+
+/* Saalansicht: quick switch in the header for large text on a projector */
+.hall-toggle span { font: 600 16px/1 var(--heading); letter-spacing: -.02em; min-width: 22px; text-align: center; }
+.hall-toggle[aria-pressed="true"] { color: var(--accent); background: var(--hover); box-shadow: inset 0 0 0 1px var(--accent); }
