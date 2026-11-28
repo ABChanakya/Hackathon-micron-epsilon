@@ -62,7 +62,7 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | `GET /api/ml/events?status=pending&limit=50` | – | `[event]` | Flagged and error events, newest first. `status`: `pending`, `normal`, `anomaly`, `error` |
 | `POST /api/ml/events/{id}/label` | `{"label": "normal" \| "anomaly", "note"?}` | event | A person's answer to a flag |
 | `POST /api/ml/reset` | `{"keep_labels": true}` | ML status | Learn the normal state again from the next seconds |
-| `POST /api/ml/learn` | `{"file": "rec_….csv"}` | ML status | Learn a recording of the connected sensor as normal |
+| `POST /api/ml/learn` | `{"file": "rec_….csv", "label": "normal" \| "anomaly"}` | ML status | Learn a recording of the connected sensor as normal, or as anomaly examples |
 | `GET /api/ml/errors?limit=50` | – | `[error]` | The last lines of the error file, newest first |
 
 ### `POST /api/connect`
@@ -155,6 +155,16 @@ spreads (robust z). Shifts of `mean` and `intensity` count both ways; noise-type
 | normal | score below `sensitivity` | Learned into the baseline (in the warm-up, and afterwards with `learn_online`) |
 | flagged | score ≥ `sensitivity` for `consecutive` windows | A `pending` event. A person answers it: `normal` puts it into the normal set (later windows like it are not flagged), `anomaly` into the anomaly set (later windows like it become `anomaly` events with `known: true`, without asking) |
 | error | invalid or lost samples ≥ `error_fraction` of the window, a value beyond `hard_min`/`hard_max`, or score ≥ `reject_z` | Discarded: never learned, and written to `error_file` |
+
+**Taught anomalies.** Some anomalies are not unusual on their own. Black metal, for example, sits within the
+spread of the other materials except for its low signal intensity. Once anomaly examples exist (a "not fine" answer,
+or a recording learned with `"label": "anomaly"`), every window is also classified by its 5 nearest neighbours among
+the normal windows and the anomaly examples, over all features scaled by the normal spread. If most of them are
+anomaly examples, the window is a known anomaly. The event's `reason` is the feature that tells the taught examples apart
+from normal (black metal: `intensity`) and `label_note` is the note or recording label. `teach_materials.py` teaches all
+recordings of the connected sensor in one go (black metal as anomaly). On the ILD1900 recordings, trained on the
+median-9 takes and tested on the unseen no-averaging takes, this found black metal in 20 of 20 windows, with 1 stray window among 115 of the
+other materials (the 2-windows-in-a-row rule filters it out).
 
 After connecting, the agent learns for `warmup_s` seconds before it flags anything, unless it already has a model for
 this sensor (models are saved in `backend/ml/model_<sensor>.json` and loaded on the next connect). Changing sensor

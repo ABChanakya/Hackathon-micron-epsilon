@@ -61,6 +61,19 @@ class AnomalyAgentTest(unittest.TestCase):
         self.assertEqual(known[-1]["status"], "anomaly")
         self.assertEqual(known[-1]["label_note"], "part missing")
 
+    def test_taught_anomaly_is_recognised_even_when_not_unusual(self):
+        # normal: two materials (levels 4 and 6, intensity 30-45); anomaly: a dark material at level 5, intensity 20
+        rng = random.Random(1)
+        win = lambda level, inten: {"mean": level + rng.gauss(0, 0.05), "std": 0.003, "p2p": 0.02, "slope": 0.005,
+                                    "jitter": 0.0005, "err_frac": 0.0, "intensity": inten + rng.gauss(0, 1)}
+        self.agent.learn_windows([win(4, 30) for _ in range(20)] + [win(6, 45) for _ in range(20)])
+        self.agent.learn_windows([win(5, 20) for _ in range(20)], "anomaly", "black metal")
+        self.assertIsNone(self.agent._classify(win(4, 31)))
+        hit = self.agent._classify(win(5, 20))
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit["note"], "black metal")
+        self.assertEqual(self.agent._why(hit), "intensity")
+
     def test_error_codes_go_to_the_error_file_and_are_never_learned(self):
         self.feed.run(6)
         self.feed.run(2, invalid=True)

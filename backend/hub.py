@@ -188,13 +188,13 @@ class Hub:
     def _ml_config(self, body):
         return self.ml.set_config(body)
 
-    def _ml_learn(self, info, feats):
+    def _ml_learn(self, info, feats, label="normal", note=""):
         def same(a, b):                    # "ILD1900" (older recordings) matches "ILD1900-10"
             a, b = str(a.get("model") or ""), str(b.get("model") or "")
             return bool(a) and (a == b or a.startswith(b + "-") or b.startswith(a + "-"))
         if not self.ml.key or not same(info, self.ml.info) or info.get("unit", "mm") != self.ml.unit:
             raise RuntimeError("connect the sensor this recording was made with first")
-        return {"learned_windows": self.ml.learn_windows(feats), **self.ml.status()}
+        return {"learned_windows": self.ml.learn_windows(feats, label, note), "label": label, **self.ml.status()}
 
     # ---- recording --------------------------------------------------------------------
     def _start_rec(self, label="", notes="", duration_s=None):

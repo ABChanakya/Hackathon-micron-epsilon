@@ -269,7 +269,10 @@ async def ml_reset(body: dict | None = None):
 
 @app.post("/api/ml/learn")
 async def ml_learn(body: dict):
-    """Learn a recording as normal: {"file": "rec_....csv"}. The recording must come from the connected sensor."""
+    """Learn a recording: {"file": "rec_....csv", "label": "normal" | "anomaly"}. It must come from the connected sensor."""
+    label = body.get("label", "normal")
+    if label not in ("normal", "anomaly"):
+        raise HTTPException(400, "label must be normal or anomaly")
     path = _rec_path(body.get("file", ""))
     if not path.endswith(".csv"):
         raise HTTPException(400, "file must be a recording .csv")
@@ -282,7 +285,7 @@ async def ml_learn(body: dict):
     feats = await asyncio.to_thread(anomaly.features_from_csv, path, hub.ml.cfg["window_s"])
     if not feats:
         raise HTTPException(400, "the recording has no usable windows")
-    return await _do("_ml_learn", meta.get("info") or {}, feats)
+    return await _do("_ml_learn", meta.get("info") or {}, feats, label, meta.get("label") or os.path.basename(path))
 
 
 @app.get("/api/ml/errors")

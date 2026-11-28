@@ -70,7 +70,8 @@ Recordings are in `recordings/` (CSV plus a `.json` with label and stats). Play 
 via `POST /api/ml/learn`) and flags windows that deviate. The monitor shows a flag with "In Ordnung" / "Nicht in
 Ordnung"; the answer teaches the agent. Invalid or lost data and values beyond the configured limits are discarded and
 appended to `ml/errors.jsonl`. Parameters: monitor → Einstellungen → KI-Anomalieerkennung, or `PUT /api/ml/config`.
-Learned state lives in `ml/` (not in git). Details: [API.md](API.md#anomaly-agent-anomalypy).
+Learned state lives in `ml/` (not in git). To teach the material recordings in one go (black metal = anomaly, the
+rest = normal), connect the sensor and run `.venv/bin/python teach_materials.py` (`--fresh` forgets earlier learning). Details: [API.md](API.md#anomaly-agent-anomalypy).
 
 ## Tests
 From `backend/`, install `requirements-dev.txt`, then run:

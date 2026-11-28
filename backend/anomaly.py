@@ -153,6 +153,7 @@ class AnomalyAgent:
         self.w_drop0, self.w_hard = None, None
         self.streak, self.streak_feats = 0, []
         self.cool_until = 0.0
+        self.grace_until = 0.0                # after "this is fine": the confirmed situation, not a new anomaly
         self.open_event = None                # flagged event still growing
         self.open_error = None                # error event still growing
         self.score, self.reason, self.cls = None, None, None
@@ -271,6 +272,37 @@ class AnomalyAgent:
                 best, hit = d, ex
         return hit
 
+    def _classify(self, f, k=5):
+        """k nearest neighbours over all features (scaled by the normal spread) among the labelled anomaly examples
+        and the normal windows (baseline + "fine" examples). Returns the closest anomaly example if most of the k
+        neighbours are anomalies, else None. This is what lets a person teach an anomaly that is not unusual on its
+        own, e.g. a material that looks like the others except for its signal intensity."""
+        if not self.stats:
+            return None
+        sc = {key: s for key, (_, s) in self.stats.items()}
+
+        def dist(g):
+            common = [key for key in sc if key in f and key in g]
+            return math.sqrt(sum(((f[key] - g[key]) / sc[key]) ** 2 for key in common) / len(common)) if common else 1e9
+
+        cands = [(dist(ex["f"]), True, ex) for ex in self.anomaly_ex]
+        cands += [(dist(g), False, None) for g in self.baseline]
+        cands += [(dist(ex["f"]), False, None) for ex in self.normal_ex]
+        near = sorted(cands, key=lambda c: c[0])[:k]
+        votes = sum(1 for c in near if c[1])
+        if votes * 2 <= len(near):
+            return None
+        best = min((c for c in near if c[1]), key=lambda c: c[0])[2]
+        return best
+
+    def _why(self, best):
+        """The feature that tells a taught anomaly apart from normal (e.g. intensity for a dark material): median over
+        all examples taught together with `best`, so one odd window does not decide it."""
+        group = [self._z(ex["f"]) for ex in self.anomaly_ex
+                 if ex.get("note") == best.get("note") and ex.get("event") == best.get("event")] or [self._z(best["f"])]
+        sep = {key: abs(_median([g[key] for g in group if key in g])) for key in group[0]}
+        return max(sep, key=sep.get) if sep else best.get("reason")
+
     # ---- feeding -----------------------------------------------------------------------
     def feed(self, t, value, sample, dropped_total, hub_wall_off):
         """One raw sample. value None = invalid (sensor error code). Called by the hub thread only."""
@@ -325,9 +357,15 @@ class AnomalyAgent:
             return
 
         known = self._near(z, self.anomaly_ex)
+        if known is None and self.anomaly_ex:
+            known = self._classify(f)          # learned from labels: looks like a known anomaly, even if not unusual
         unusual = known is not None or score >= self.cfg["sensitivity"]
         if unusual and self._near(z, self.normal_ex) and known is None:
             unusual = False                    # a person said windows like this are fine
+        if unusual and known is None and time.time() < self.grace_until:
+            # Right after a "fine" answer the situation a person just confirmed goes on: learn it, do not ask again.
+            self.normal_ex = (self.normal_ex + [{"f": f, "reason": why, "note": "", "event": None, "at": _now()}])[-EXAMPLES_MAX:]
+            unusual = False
         if not unusual:
             self.cls, self.reason = "normal", None
             self.streak, self.streak_feats = 0, []
@@ -339,14 +377,16 @@ class AnomalyAgent:
                     self._refit()
             return
 
-        self.cls, self.reason = ("known_anomaly" if known else "flagged"), (known["reason"] if known else why)
+        self.cls, self.reason = ("known_anomaly" if known else "flagged"), (self._why(known) if known else why)
         self.streak += 1
         self.streak_feats.append(f)
         ev = self.open_event
         if ev is not None:                     # the same anomaly continues: grow the event
             ev["t_end"] = _iso(wall_off + t_end); ev["windows"] += 1
             if score > ev["score"]:
-                ev.update(score=round(score, 2), reason=self.reason, z=_round(z), features=_round(f), value=self._shown(f))
+                ev.update(score=round(score, 2), z=_round(z), features=_round(f), value=self._shown(f))
+                if not ev["known"]:            # a known anomaly keeps the reason it was taught with
+                    ev["reason"] = self.reason
             if len(ev["_f"]) < 20:
                 ev["_f"].append(f)
             return
@@ -415,6 +455,7 @@ class AnomalyAgent:
             feats = ev.get("_f") or [ev["features"]]
             ex = [{"f": f, "reason": ev["reason"], "note": note, "event": event_id, "at": _now()} for f in feats]
             if label == "normal":
+                self.grace_until = time.time() + max(15.0, self.cfg["cooldown_s"])
                 self.normal_ex = (self.normal_ex + ex)[-EXAMPLES_MAX:]
                 self.anomaly_ex = [a for a in self.anomaly_ex if a.get("event") != event_id]
                 self.baseline.extend(feats)
@@ -442,9 +483,14 @@ class AnomalyAgent:
         except OSError:
             pass
 
-    def learn_windows(self, feats):
-        """Add the windows of a recording to the normal baseline (seed from a recording)."""
+    def learn_windows(self, feats, label="normal", note=""):
+        """Learn the windows of a recording: as normal (baseline) or as anomaly examples."""
         with self.lock:
+            if label == "anomaly":
+                ex = [{"f": f, "reason": "recording", "note": note, "event": None, "at": _now()} for f in feats]
+                self.anomaly_ex = (self.anomaly_ex + ex)[-EXAMPLES_MAX:]
+                self._save()
+                return len(feats)
             self.baseline.extend(feats)
             self.learned_windows += len(feats)
             self._refit()
