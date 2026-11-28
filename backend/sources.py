@@ -73,7 +73,7 @@ class SimSource:
         out = []
         for i in range(self._n, due):
             t = i / self.rate_hz
-            err = random.random() < 0.001          # ~0.1% invalid readings, like a real sensor ('no peak')
+            err = random.random() < 1 / (self.rate_hz * 45)  # About one brief no-peak event per 45 s at the selected rate.
             s = {"dist": ERR_BASE - 4 if err else 5 + 2 * math.sin(2 * math.pi * 0.5 * t) + random.gauss(0, 0.003)}
             if "COUNTER" in self.channels:
                 s["counter"] = i % 262144
