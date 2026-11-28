@@ -473,5 +473,9 @@ export default {
   "Wiederholen, bis der Wert stabil ist": "値が安定するまで繰り返す",
   "Ton testen": "音をテスト",
   "Zähler zurücksetzen": "カウンターをリセット",
-  "Echte Aufnahmen abspielen": "実際の記録を再生"
+  "Echte Aufnahmen abspielen": "実際の記録を再生",
+  "Vorschlag:": "提案:",
+  "Bei „In Ordnung“ werden die Auswertungsgrenzen auf": "「In Ordnung」を選ぶと、評価範囲は次の範囲に広がります:",
+  "Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.": "期間の最低値と最高値を許容と評価しました。",
+  "erweitert, den tiefsten und höchsten Wert der letzten {n} s.": "広がります(直近 {n} 秒の最低値と最高値)。"
 };

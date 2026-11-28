@@ -492,3 +492,21 @@ test('the backend device check decides which sensor a status describes', () => {
   assert.equal(engine.sensorFromStatus({ info, device: { family: 'ild1420', verified: true } }), null);   // no layout for it here
   assert.equal(engine.sensorFromStatus({ info: { model: 'UC-SF22-S3', unit: '°C' }, device: { family: 'thermo_uc', verified: true } }), 'thermo_uc');
 });
+
+test('"fine" for a window widens the evaluation limits to its lowest and highest value, and undo restores them', () => {
+  engine.useSensor('ild1900');
+  const state = engine.createInitialState();
+  const profile = state.profiles[0];
+  const [lower, upper] = [profile.learnedLower, profile.learnedUpper];
+  const result = engine.acceptRange(profile, { value: 24.9, lo: 24.4, hi: 25.3, seconds: 30 }, 'typical dip', 12);
+  assert.ok(result.profile.learnedLower <= 24.4 - 0.005 + 1e-9 && result.profile.learnedLower >= 24.39);
+  assert.ok(result.profile.learnedUpper >= 25.3 + 0.005 - 1e-9 && result.profile.learnedUpper <= 25.31);
+  assert.equal(result.event.changed, true);
+  assert.deepEqual(result.event.range, [24.4, 25.3]);
+  assert.equal(result.profile.lower, profile.lower, 'the target limits stay');
+  const undone = engine.undoLearning(result.profile);
+  assert.deepEqual([undone.learnedLower, undone.learnedUpper], [lower, upper]);
+  const paused = engine.acceptRange({ ...profile, learning: false }, { lo: 24, hi: 26 });
+  assert.equal(paused.event.changed, false, 'paused learning keeps the limits');
+  assert.throws(() => engine.acceptRange(profile, {}), /ungültig/);
+});

@@ -61,6 +61,40 @@ class AnomalyAgentTest(unittest.TestCase):
         self.assertEqual(known[-1]["status"], "anomaly")
         self.assertEqual(known[-1]["label_note"], "part missing")
 
+    def test_fine_confirms_the_whole_window_and_suggests_its_peaks(self):
+        clock = {"t": 1.8e9}
+        anomaly.time = type("T", (), {"time": staticmethod(lambda: clock["t"])})   # grace/cooldown follow the signal, not the wall clock
+        try:
+            f = self.feed
+            f.run(6)
+            for amp in (0.30, 0.35):                         # a typical dip, flagged the first time
+                f.run(1.5, level=5.0 - amp); f.run(3)
+            pend = self.pending()
+            self.assertTrue(pend)
+            self.agent.label(pend[-1]["id"], "normal", "typisch", 30)
+            sug = self.agent.suggest(30)
+            self.assertAlmostEqual(sug["hi"], 5.0, delta=0.02)          # the highest value of the stretch
+            self.assertAlmostEqual(sug["lo"], 4.65, delta=0.02)         # the lowest: the deepest dip seen
+            clock["t"] += 60                                  # the grace period is long over
+            for amp in (0.32, 0.33, 0.31):                    # similar dips of other depths: no longer flagged
+                f.run(1.5, level=5.0 - amp); f.run(3)
+            self.assertEqual(self.pending(), [])
+            f.run(1.5, level=3.0)                             # a dip far beyond what was confirmed is still flagged
+            f.run(1)
+            self.assertTrue(self.pending())
+        finally:
+            import time
+            anomaly.time = time
+
+    def test_an_unanswered_flag_expires_when_a_newer_one_comes(self):
+        self.feed.run(6)
+        self.feed.run(2, noise=0.05); self.feed.run(3)
+        first = self.pending()[-1]["id"]
+        self.feed.run(2, level=7.0); self.feed.run(3)
+        status = {e["id"]: e["status"] for e in self.agent.events}
+        self.assertEqual(status[first], "expired")
+        self.assertEqual(len(self.pending()), 1)
+
     def test_taught_anomaly_is_recognised_even_when_not_unusual(self):
         # normal: two materials (levels 4 and 6, intensity 30-45); anomaly: a dark material at level 5, intensity 20
         rng = random.Random(1)

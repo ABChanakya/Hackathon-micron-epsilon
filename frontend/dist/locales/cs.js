@@ -474,5 +474,9 @@ export default {
   "Wiederholen, bis der Wert stabil ist": "Opakovat, dokud se hodnota neustálí",
   "Ton testen": "Vyzkoušet zvuk",
   "Zähler zurücksetzen": "Vynulovat počítadlo",
-  "Echte Aufnahmen abspielen": "Přehrát skutečné záznamy"
+  "Echte Aufnahmen abspielen": "Přehrát skutečné záznamy",
+  "Vorschlag:": "Návrh:",
+  "Bei „In Ordnung“ werden die Auswertungsgrenzen auf": "Při „In Ordnung“ se hodnoticí meze rozšíří na",
+  "Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.": "Nejnižší a nejvyšší hodnota období ohodnocena jako přijatelná.",
+  "erweitert, den tiefsten und höchsten Wert der letzten {n} s.": "rozšířeny: nejnižší a nejvyšší hodnota za posledních {n} s."
 };

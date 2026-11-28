@@ -473,5 +473,9 @@ export default {
   "Wiederholen, bis der Wert stabil ist": "重复直到数值稳定",
   "Ton testen": "测试声音",
   "Zähler zurücksetzen": "重置计数",
-  "Echte Aufnahmen abspielen": "播放真实录制数据"
+  "Echte Aufnahmen abspielen": "播放真实录制数据",
+  "Vorschlag:": "建议:",
+  "Bei „In Ordnung“ werden die Auswertungsgrenzen auf": "选择“In Ordnung”后,评估范围将扩大到",
+  "Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.": "该时段的最低值和最高值被评为可接受。",
+  "erweitert, den tiefsten und höchsten Wert der letzten {n} s.": "扩大:最近 {n} 秒内的最低值和最高值。"
 };

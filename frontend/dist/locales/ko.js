@@ -473,5 +473,9 @@ export default {
   "Wiederholen, bis der Wert stabil ist": "값이 안정될 때까지 반복",
   "Ton testen": "소리 테스트",
   "Zähler zurücksetzen": "카운터 초기화",
-  "Echte Aufnahmen abspielen": "실제 녹화 재생"
+  "Echte Aufnahmen abspielen": "실제 녹화 재생",
+  "Vorschlag:": "제안:",
+  "Bei „In Ordnung“ werden die Auswertungsgrenzen auf": "‘In Ordnung’를 선택하면 평가 한계가 다음으로 넓어집니다:",
+  "Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.": "기간의 최저값과 최고값을 허용으로 평가했습니다.",
+  "erweitert, den tiefsten und höchsten Wert der letzten {n} s.": "넓어집니다(최근 {n}초의 최저값과 최고값)."
 };

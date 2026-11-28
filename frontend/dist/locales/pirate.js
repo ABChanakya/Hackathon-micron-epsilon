@@ -473,5 +473,9 @@ export default {
   "Wiederholen, bis der Wert stabil ist": "Repeat till the value settles",
   "Ton testen": "Test the sound",
   "Zähler zurücksetzen": "Reset counter",
-  "Echte Aufnahmen abspielen": "Play the real recordin's"
+  "Echte Aufnahmen abspielen": "Play the real recordin's",
+  "Vorschlag:": "Me suggestion:",
+  "Bei „In Ordnung“ werden die Auswertungsgrenzen auf": "On “In Ordnung” the evaluation limits widen to",
+  "Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.": "Lowest and highest value o' the period rated acceptable.",
+  "erweitert, den tiefsten und höchsten Wert der letzten {n} s.": "widened: the lowest and highest value o' the last {n} s."
 };

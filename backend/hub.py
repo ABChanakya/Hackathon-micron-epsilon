@@ -183,8 +183,8 @@ class Hub:
         return bucketize(((t, v - off) for t, v in self.buf if t >= t_end - seconds), t_end - seconds, t_end, bins)
 
     # ---- anomaly agent (mutations run on this thread, like the sensor) -------------------
-    def _ml_label(self, event_id, label, note):
-        return self.ml.label(event_id, label, note)
+    def _ml_label(self, event_id, label, note, learn_s=None):
+        return self.ml.label(event_id, label, note, learn_s)
 
     def _ml_reset(self, keep_labels):
         self.ml.reset(keep_labels)

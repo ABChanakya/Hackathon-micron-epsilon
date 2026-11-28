@@ -61,7 +61,9 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | `GET /api/ml` | – | ML status | Anomaly agent: state, config, learned baseline, label counts, error file (see "Anomaly agent") |
 | `GET` / `PUT /api/ml/config` | any subset of the config | config | Read or change the agent's parameters (saved in `backend/ml/config.json`) |
 | `GET /api/ml/events?status=pending&limit=50` | – | `[event]` | Flagged and error events, newest first. `status`: `pending`, `normal`, `anomaly`, `error` |
-| `POST /api/ml/events/{id}/label` | `{"label": "normal" \| "anomaly", "note"?}` | event | A person's answer to a flag |
+| `POST /api/ml/events/{id}/label` | `{"label": "normal" \| "anomaly", "note"?, "learn_s"?}` | event | A person's answer to a flag. With `learn_s` (the chart window, 10/30/60) a `normal` answer teaches the whole last stretch as normal, resolves open flags inside it, and returns `suggest` |
+| `GET /api/ml/suggest?seconds=30` | – | `{lo, hi, seconds, windows, unit}` \| null | Lowest and highest value of the last N seconds, as the monitor shows them: what "fine" would confirm as new evaluation limits |
+| `POST /api/ml/learn_recent` | `{"seconds": 30, "note"?}` | `{learned_windows, suggest}` | Learn the last N seconds as normal without an event (a limit deviation was accepted) |
 | `POST /api/ml/reset` | `{"keep_labels": true}` | ML status | Learn the normal state again from the next seconds |
 | `POST /api/ml/learn` | `{"file": "rec_….csv", "label": "normal" \| "anomaly"}` | ML status | Learn a recording of the connected sensor as normal, or as anomaly examples |
 | `GET /api/ml/errors?limit=50` | – | `[error]` | The last lines of the error file, newest first |
@@ -172,6 +174,13 @@ spreads (robust z). Shifts of `mean` and `intensity` count both ways; noise-type
 | flagged | score ≥ `sensitivity` for `consecutive` windows | A `pending` event. A person answers it: `normal` puts it into the normal set (later windows like it are not flagged), `anomaly` into the anomaly set (later windows like it become `anomaly` events with `known: true`, without asking) |
 | error | invalid or lost samples ≥ `error_fraction` of the window, a value beyond `hard_min`/`hard_max`, or score ≥ `reject_z` | Discarded: never learned, and written to `error_file` |
 
+**"Fine" teaches the whole stretch.** Answering `normal` with `learn_s` does not only learn the flagged windows. All windows of the
+last `learn_s` seconds become normal examples and baseline, and for every feature the lowest and highest value seen in them is
+stored as a *confirmed range* (`ok_ranges`, saved in the model). A later window whose unusual features all lie inside a
+confirmed range (plus 10 % of its width) is not flagged. Open flags inside the stretch are resolved as normal, and a flag that
+was never answered becomes `expired` when a newer one comes, so an old question never pops up again. The monitor uses
+`/api/ml/suggest` to show the new evaluation limits it will apply (lowest and highest value of the window) before you answer.
+
 **Taught anomalies.** Some anomalies are not unusual on their own. Black metal, for example, sits within the
 spread of the other materials except for its low signal intensity. Once anomaly examples exist (a "not fine" answer,
 or a recording learned with `"label": "anomaly"`), every window is also classified by its 5 nearest neighbours among
@@ -210,7 +219,7 @@ settings through `/api/settings` starts the learning again (human labels are kep
  "sensor": "ILD1900-10", "serial": "…", "source": "replay", "replay_of": "rec_20261127_203446.csv", "label_note": ""}
 ```
 `value` is in the monitor's unit (mm from the sensor face, or °C); `features` are in the sensor's own scale.
-`reason` is the feature that deviates most. Labels are also appended to `backend/ml/labels.jsonl`.
+`status` is `pending`, `normal`, `anomaly`, `expired` (replaced by a newer flag) or `error`. `reason` is the feature that deviates most. Labels are also appended to `backend/ml/labels.jsonl`.
 
 **Error file** (`error_file`, one JSON object per line, appended; a long error is split into lines of at most 5 s):
 ```json

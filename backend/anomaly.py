@@ -36,6 +36,8 @@ REL_FLOOR = 0.05                             # ...and at least 5 % of the normal
 BASELINE_MAX = 1200                          # normal windows kept (10 min at 0.5 s), oldest dropped first
 EXAMPLES_MAX = 300                           # labelled examples kept per class
 EVENTS_MAX = 200
+RECENT_S = 900                               # seconds of window history kept, so "fine" can teach the last 10/30/60 s
+OK_MARGIN = 0.10                             # a confirmed range is widened by 10 % of its width on each side
 MATCH_REL = 0.25                             # labelled examples far from normal match with a tolerance of 25 % of their z per radius unit
 ERROR_FLUSH_S = 5.0                          # a long error event is written in pieces of at most this length
 
@@ -139,6 +141,7 @@ class AnomalyAgent:
         self.info, self.key, self.unit, self.source, self.offset = {}, None, "mm", None, 0.0
         self._clear_model()
         self.events = deque(maxlen=EVENTS_MAX)
+        self.recent = deque()                 # {t, f, lo, hi}: the last RECENT_S seconds of non-error windows
         self.errors_written = 0
         self.last_error_line = None
         self._reset_stream()
@@ -148,6 +151,7 @@ class AnomalyAgent:
         self.baseline = deque(maxlen=BASELINE_MAX)
         self.normal_ex, self.anomaly_ex = [], []
         self.stats = None                     # {feature: (median, scale)}
+        self.ok_ranges = {}                   # feature -> [lo, hi]: what people confirmed as fine (union over all answers)
         self.learned_windows = 0              # windows learned since the model was (re)started
 
     def _reset_stream(self):
@@ -180,6 +184,7 @@ class AnomalyAgent:
                     m = json.load(fh)
                 self.baseline.extend(m.get("baseline", []))
                 self.normal_ex, self.anomaly_ex = m.get("normal", []), m.get("anomaly", [])
+                self.ok_ranges = m.get("ok_ranges", {})
                 self.learned_windows = len(self.baseline)
                 self._refit()
             except (OSError, ValueError):
@@ -196,10 +201,10 @@ class AnomalyAgent:
     def reset(self, keep_labels=False):
         """Forget the baseline (learn again from the next seconds); optionally keep the human labels."""
         with self.lock:
-            ex = (self.normal_ex, self.anomaly_ex)
+            ex = (self.normal_ex, self.anomaly_ex, self.ok_ranges)
             self._clear_model()
             if keep_labels:
-                self.normal_ex, self.anomaly_ex = ex
+                self.normal_ex, self.anomaly_ex, self.ok_ranges = ex
             self._reset_stream()
             self.events = deque((e for e in self.events if e["status"] != "pending"), maxlen=EVENTS_MAX)
             self._save()
@@ -211,7 +216,8 @@ class AnomalyAgent:
         tmp = self.model_path() + ".tmp"
         with open(tmp, "w") as fh:
             json.dump({"key": self.key, "info": self.info, "saved": _now(), "features": FEATURES,
-                       "baseline": list(self.baseline), "normal": self.normal_ex, "anomaly": self.anomaly_ex}, fh)
+                       "baseline": list(self.baseline), "normal": self.normal_ex, "anomaly": self.anomaly_ex,
+                       "ok_ranges": self.ok_ranges}, fh)
         os.replace(tmp, self.model_path())
 
     def _ready(self):
@@ -273,6 +279,69 @@ class AnomalyAgent:
             if d <= best:
                 best, hit = d, ex
         return hit
+
+    def _within_ok(self, f):
+        """True when every feature that is unusual in this window lies inside the range people confirmed as fine."""
+        if not self.ok_ranges or not self.stats:
+            return False
+        z = self._z(f)
+        hot = [k for k, v in z.items() if (abs(v) if k in TWO_SIDED else v) >= self.cfg["sensitivity"]]
+        if not hot:
+            return False
+        for k in hot:
+            r = self.ok_ranges.get(k)
+            if not r:
+                return False
+            margin = OK_MARGIN * (r[1] - r[0]) + 0.5 * self.stats[k][1]
+            if not (r[0] - margin <= f[k] <= r[1] + margin):
+                return False
+        return True
+
+    def _recent_since(self, seconds):
+        if not self.recent:
+            return []
+        cutoff = self.recent[-1]["t"] - seconds
+        return [w for w in self.recent if w["t"] >= cutoff]
+
+    def suggest(self, seconds):
+        """Highest and lowest value of the last `seconds` (as shown: mm from the sensor face, or °C) and how many
+        windows that covers; None when there is nothing yet. This is what "fine" would confirm."""
+        with self.lock:
+            win = self._recent_since(float(seconds))
+            if not win:
+                return None
+            return {"lo": round(min(w["lo"] for w in win), 6), "hi": round(max(w["hi"] for w in win), 6),
+                    "seconds": round(len(win) * self.cfg["window_s"], 1), "windows": len(win), "unit": self.unit}
+
+    def _learn_normal(self, windows, note="", event=None, reason="confirmed"):
+        """Teach windows as normal: baseline, labelled examples, and the confirmed ranges per feature."""
+        feats = [w["f"] if "f" in w and isinstance(w.get("f"), dict) else w for w in windows]
+        if not feats:
+            return 0
+        ex = [{"f": f, "reason": reason, "note": note, "event": event, "at": _now()} for f in feats]
+        self.normal_ex = (self.normal_ex + ex)[-EXAMPLES_MAX:]
+        self.baseline.extend(feats)
+        for k in FEATURES:
+            xs = [f[k] for f in feats if k in f]
+            if xs:
+                r = self.ok_ranges.get(k)
+                self.ok_ranges[k] = [min(xs + ([r[0]] if r else [])), max(xs + ([r[1]] if r else []))]
+        self.learned_windows += len(feats)
+        self._refit()
+        return len(feats)
+
+    def learn_recent(self, seconds, note=""):
+        """Learn the last `seconds` as normal without an event (the person accepted a limit deviation)."""
+        with self.lock:
+            n = self._learn_normal(self._recent_since(float(seconds)), note, None, "recent")
+            self.grace_until = time.time() + max(15.0, self.cfg["cooldown_s"])
+            self._save()
+            return {"learned_windows": n, "suggest": self._suggest_locked(seconds)}
+
+    def _suggest_locked(self, seconds):
+        win = self._recent_since(float(seconds))
+        return None if not win else {"lo": round(min(w["lo"] for w in win), 6), "hi": round(max(w["hi"] for w in win), 6),
+                                     "seconds": round(len(win) * self.cfg["window_s"], 1), "windows": len(win), "unit": self.unit}
 
     def _classify(self, f, k=5):
         """k nearest neighbours over all features (scaled by the normal spread) among the labelled anomaly examples
@@ -349,6 +418,11 @@ class AnomalyAgent:
             self._error(err, f, z, score, wall_off + t0, wall_off + t_end, dropped)
             return
         self._close_error()
+        if self.w_vs:
+            self.recent.append({"t": wall_off + t_end, "f": f, "lo": min(self.w_vs) + self.offset,
+                                "hi": max(self.w_vs) + self.offset})
+            while self.recent and self.recent[0]["t"] < self.recent[-1]["t"] - RECENT_S:
+                self.recent.popleft()
 
         if not self._ready():                 # warm-up: everything that is not an error is learned as normal
             self.cls, self.reason = "learning", None
@@ -364,6 +438,8 @@ class AnomalyAgent:
         unusual = known is not None or score >= self.cfg["sensitivity"]
         if unusual and self._near(z, self.normal_ex) and known is None:
             unusual = False                    # a person said windows like this are fine
+        if unusual and known is None and self._within_ok(f):
+            unusual = False                    # every unusual feature lies inside a range a person confirmed as fine
         if unusual and known is None and time.time() < self.grace_until:
             # Right after a "fine" answer the situation a person just confirmed goes on: learn it, do not ask again.
             self.normal_ex = (self.normal_ex + [{"f": f, "reason": why, "note": "", "event": None, "at": _now()}])[-EXAMPLES_MAX:]
@@ -384,7 +460,7 @@ class AnomalyAgent:
         self.streak_feats.append(f)
         ev = self.open_event
         if ev is not None:                     # the same anomaly continues: grow the event
-            ev["t_end"] = _iso(wall_off + t_end); ev["windows"] += 1
+            ev["t_end"] = _iso(wall_off + t_end); ev["windows"] += 1; ev["_t1"] = wall_off + t_end
             if score > ev["score"]:
                 ev.update(score=round(score, 2), z=_round(z), features=_round(f), value=self._shown(f))
                 if not ev["known"]:            # a known anomaly keeps the reason it was taught with
@@ -400,7 +476,10 @@ class AnomalyAgent:
               "windows": self.streak, "score": round(score, 2), "reason": self.reason, "z": _round(z),
               "features": _round(f), "value": self._shown(f), "unit": self.unit, "sensor": self.info.get("model"),
               "serial": self.info.get("serial"), "source": self.source, "replay_of": self.info.get("replay_of"),
-              "_f": list(self.streak_feats)}
+              "_f": list(self.streak_feats), "_t1": wall_off + t_end}
+        for old in self.events:                # an unanswered older flag is stale now: never ask about it again
+            if old["status"] == "pending":
+                old["status"] = "expired"
         self.events.append(ev)
         self.open_event = ev
         self.cool_until = time.time() + self.cfg["cooldown_s"]
@@ -445,7 +524,7 @@ class AnomalyAgent:
         return p if os.path.isabs(p) else os.path.join(BASE_DIR, p)
 
     # ---- human labels ------------------------------------------------------------------
-    def label(self, event_id, label, note=""):
+    def label(self, event_id, label, note="", learn_s=None):
         if label not in ("normal", "anomaly"):
             raise ValueError("label must be 'normal' or 'anomaly'")
         with self.lock:
@@ -458,18 +537,23 @@ class AnomalyAgent:
             ex = [{"f": f, "reason": ev["reason"], "note": note, "event": event_id, "at": _now()} for f in feats]
             if label == "normal":
                 self.grace_until = time.time() + max(15.0, self.cfg["cooldown_s"])
-                self.normal_ex = (self.normal_ex + ex)[-EXAMPLES_MAX:]
                 self.anomaly_ex = [a for a in self.anomaly_ex if a.get("event") != event_id]
-                self.baseline.extend(feats)
-                self._refit()
+                # "fine" confirms the whole recent stretch (the last 10/30/60 s the person saw), not just the flagged windows
+                recent = self._recent_since(float(learn_s)) if learn_s else []
+                self._learn_normal([{"f": f} for f in feats] + recent, note, event_id, ev["reason"])
+                ex = [e for e in self.normal_ex if e.get("event") == event_id] or ex
+                if learn_s:
+                    ev["suggest"] = self._suggest_locked(learn_s)
             else:
                 self.anomaly_ex = (self.anomaly_ex + ex)[-EXAMPLES_MAX:]
                 self.normal_ex = [a for a in self.normal_ex if a.get("event") != event_id]
             ev.update(status=label, label_note=note, labelled_at=_now())
-            for other in self.events:          # open events with the same pattern, or normal by now, get the same answer
+            cutoff = self.recent[-1]["t"] - float(learn_s) if (learn_s and self.recent) else None
+            for other in self.events:          # open events inside the confirmed stretch, or like it, get the same answer
                 if label == "normal" and other is not ev and other["status"] == "pending" and self.stats:
                     oz = self._z(other["features"])
-                    if self._near(oz, ex) or self._score(oz)[0] < self.cfg["sensitivity"]:
+                    inside = cutoff is not None and other.get("_t1", 0) >= cutoff
+                    if inside or self._near(oz, ex) or self._score(oz)[0] < self.cfg["sensitivity"]:
                         other.update(status="normal", label_note=note, labelled_at=_now(), auto=True)
             if self.open_event is ev:
                 self.open_event = None

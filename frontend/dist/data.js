@@ -257,6 +257,35 @@ export function acceptFeedback(profile, value, accepted, note = '', t = 0) {
   return { profile: next, event };
 }
 
+// "Fine" for a whole stretch: widen the evaluation limits to the lowest and highest value of the window the person
+// looked at (suggestion: { value, lo, hi, seconds }), not only to the single value that triggered the question.
+export function acceptRange(profile, suggestion, note = '', t = 0) {
+  const { value, lo, hi, seconds } = suggestion ?? {};
+  const low = finite(lo) ? lo : value, high = finite(hi) ? hi : value;
+  if (!finite(low) || !finite(high)) throw new Error('Der Messwert ist ungültig.');
+  const next = clone(profile);
+  const previousLower = next.learnedLower ?? next.lower;
+  const previousUpper = next.learnedUpper ?? next.upper;
+  const margin = SENSOR.kind === 'temperature' ? 0.05 : 0.005;
+  if (next.learning) {
+    next.learnedLower = round(Math.max(SENSOR.rangeStart, Math.min(previousLower, low - margin)));
+    next.learnedUpper = round(Math.min(SENSOR.rangeEnd, Math.max(previousUpper, high + margin)));
+  } else {
+    next.learnedLower = previousLower;
+    next.learnedUpper = previousUpper;
+  }
+  const changed = next.learnedLower !== previousLower || next.learnedUpper !== previousUpper;
+  if (changed) next.version += 1;
+  const event = {
+    id: generateId('feedback'), type: 'feedback', t, value: finite(value) ? value : high, accepted: true, note: String(note),
+    at: new Date().toISOString(), version: next.version, previousLower, previousUpper,
+    nextLower: next.learnedLower, nextUpper: next.learnedUpper, changed, range: [low, high], seconds: seconds ?? null,
+    reason: next.learning ? 'Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.' : 'Bewertung gespeichert; Lernen ist pausiert.',
+  };
+  next.history = [...(next.history ?? []), clone(event)];
+  return { profile: next, event };
+}
+
 function adjustmentEvent(profile, type, lower, upper, reason, targetId) {
   const next = clone(profile);
   const previousLower = next.learnedLower ?? next.lower;

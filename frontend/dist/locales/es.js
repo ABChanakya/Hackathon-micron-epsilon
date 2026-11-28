@@ -474,5 +474,9 @@ export default {
   "Wiederholen, bis der Wert stabil ist": "Repetir hasta que el valor sea estable",
   "Ton testen": "Probar sonido",
   "Zähler zurücksetzen": "Restablecer contador",
-  "Echte Aufnahmen abspielen": "Reproducir grabaciones reales"
+  "Echte Aufnahmen abspielen": "Reproducir grabaciones reales",
+  "Vorschlag:": "Sugerencia:",
+  "Bei „In Ordnung“ werden die Auswertungsgrenzen auf": "Con «In Ordnung» los límites de evaluación se amplían a",
+  "Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.": "Valor más bajo y más alto del período valorados como aceptables.",
+  "erweitert, den tiefsten und höchsten Wert der letzten {n} s.": "ampliados: el valor más bajo y más alto de los últimos {n} s."
 };

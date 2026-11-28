@@ -237,6 +237,7 @@ def delete_recording(name: str):
 class LabelReq(BaseModel):
     label: str                     # normal ("in Ordnung") | anomaly ("nicht in Ordnung")
     note: str = ""
+    learn_s: float | None = None   # "normal": also learn the last N seconds (the window the person saw) as normal
 
 
 @app.get("/api/ml")
@@ -264,7 +265,25 @@ def ml_events(status: str | None = None, limit: int = 50):
 
 @app.post("/api/ml/events/{event_id}/label")
 async def ml_label(event_id: str, r: LabelReq):
-    return await _do("_ml_label", event_id, r.label, r.note)
+    if r.learn_s is not None and not 1 <= r.learn_s <= 900:
+        raise HTTPException(400, "learn_s must be between 1 and 900")
+    return await _do("_ml_label", event_id, r.label, r.note, r.learn_s)
+
+
+@app.get("/api/ml/suggest")
+def ml_suggest(seconds: float = 30):
+    """Lowest and highest value of the last `seconds` (as the monitor shows them): what "fine" would confirm as the
+    new evaluation limits. null while nothing was measured yet."""
+    return hub.ml.suggest(min(max(seconds, 1), 900))
+
+
+@app.post("/api/ml/learn_recent")
+def ml_learn_recent(body: dict):
+    """Learn the last N seconds as normal without an event (used when a limit deviation is accepted)."""
+    seconds = float(body.get("seconds", 30))
+    if not 1 <= seconds <= 900:
+        raise HTTPException(400, "seconds must be between 1 and 900")
+    return hub.ml.learn_recent(seconds, str(body.get("note", "")))
 
 
 @app.post("/api/ml/reset")
