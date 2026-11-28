@@ -56,6 +56,17 @@ Parameterbefehle erzeugen einen Vorschlag. Bestätigen und Verwerfen sind vollst
 
 ## Tests
 
+## Hinweise beim Überfahren und Bedienhilfen
+
+`dist/hints.js` zeigt Kurzinfos zu den Bedienelementen. Sie erscheinen beim Überfahren mit der Maus, beim Fokussieren mit
+der Tastatur (Tab) und beim Antippen der kleinen **i**-Schaltflächen neben Überschriften; Esc schließt sie, und der
+Hinweis bleibt stehen, solange die Maus darauf ruht. Die Texte stehen in der Tabelle `HINTS` (Selektor → Text) und
+werden nach jedem Rendern angehängt, die Seitenvorlagen in `app.js` bleiben unverändert. Neue Hinweise brauchen eine
+Übersetzung in allen Dateien unter `locales/` (der i18n-Test prüft das). Statusänderungen (Sensor verbunden oder
+getrennt, KI-Auffälligkeit) werden Screenreadern über einen unsichtbaren Live-Bereich angesagt (`announce`).
+Zusätzlich: sichtbarer Fokusrahmen überall, Klickflächen von mindestens 24 Pixeln, Hochkontrastmodus (`forced-colors`)
+und die Anomalie-Parameter in der Einstellungsseite sind auf zwei Hauptwerte reduziert, der Rest steht unter „Weitere Parameter“.
+
 Mit Node.js ab Version 20:
 
 ```sh

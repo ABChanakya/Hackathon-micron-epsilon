@@ -456,3 +456,25 @@ dialog::backdrop { background: var(--scrim); backdrop-filter: none; }
 .source-settings > .notice { margin-top: 16px; }
 .setting-footer { justify-content: flex-end; }
 .viewer-help { white-space: normal; text-align: center; }
+
+/* Hover and focus information, "i" buttons, larger targets, visible focus (hints.js) */
+.hint-tip { position: fixed; z-index: 1000; max-width: min(300px, calc(100vw - 16px)); padding: 9px 12px; border-radius: 6px;
+  background: var(--text); color: var(--bg); font-size: 12px; line-height: 1.5; box-shadow: 0 6px 24px rgba(0, 0, 0, .22); }
+.hint-tip[hidden] { display: none; }
+.tip-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 8px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line); background: transparent; color: var(--muted); font: italic 600 12px Georgia, serif; cursor: help; }
+.tip-btn:hover { color: var(--accent); border-color: var(--accent); }
+.panel-heading > h2 + .tip-btn { margin-right: auto; }
+.text-button { min-height: 32px; }
+.ml-advanced { border-top: 1px solid var(--line); padding-top: 12px; }
+.ml-advanced > summary { cursor: pointer; font-size: 12px; font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible,
+[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (forced-colors: active) {
+  .hint-tip { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+  .tip-btn { border-color: ButtonText; color: ButtonText; }
+}
+.ml-advanced > summary, .connection-details > summary { list-style: none; min-height: 32px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ml-advanced > summary::-webkit-details-marker, .connection-details > summary::-webkit-details-marker { display: none; }
+.ml-advanced > summary::before, .connection-details > summary::before { content: "▸"; color: var(--muted); font-size: 11px; transition: transform .15s; }
+.ml-advanced[open] > summary::before, .connection-details[open] > summary::before { transform: rotate(90deg); }

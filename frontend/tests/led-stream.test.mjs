@@ -54,6 +54,7 @@ function harness() {
     performance: { now: () => clock += 40 },
     closeDialog() { context.dialogType = ''; },
     toast() {},
+    announce() {},
     render() { renders.push(snapshot()); },
     updateLive() { updates.push(snapshot()); },
     addValue(value, { led }) {
