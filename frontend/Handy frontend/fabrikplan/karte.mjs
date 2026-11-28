@@ -1,8 +1,11 @@
+// Factory plan: zoomed out it is the floor plan with the modules on it; zoomed in (+, pinch, Ctrl + wheel, or a tap on
+// a group) it becomes a grid of module boxes that keeps each module's place on the plan (top right stays top right).
+// A module whose sensor is out of its limits blinks red on the plan and in the grid. "Fehler simulieren" makes one
+// sensor spike, for demos and tests.
+import { createFactorySim, gridLayout, worstAlarm } from './fabrik-sim.mjs';
+
 const width = 1400;
 const height = 505;
-const zoomLevels = [1, 1.6, 2.55, 3.8, 5];
-const splitZoom = zoomLevels[2];
-const detailZoom = zoomLevels[3];
 const opticalModel = 'optoNCDT ILD1900-10';
 const stations = [
   { name: 'Materialbereitstellung', position: 'Zuführband', quantity: 'Abstand zur Werkstückoberseite',
@@ -15,6 +18,12 @@ const stations = [
 const svgNS = 'http://www.w3.org/2000/svg';
 const chevron = '<svg class="control-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m6 9 6 6 6-6"/></svg>';
 const sensorIcon = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="4" width="16" height="11" rx="2"/><path d="M12 15v5m-3 0h6M8 9h2m4 0h2"/></svg>';
+const clock = () => performance.now() / 1000;
+const formats = {};
+const format = (value, digits) => (formats[digits] ??= new Intl.NumberFormat('de-DE',
+  { minimumFractionDigits: digits, maximumFractionDigits: digits })).format(value);
+const alarmText = { ok: 'In Ordnung', active: 'Alarm', latched: 'Alarm vorbei · quittieren' };
+const tileSizeKey = 'micro-epsilon-factory-tiles';
 
 function marker(markers, text, activate) {
   const button = document.createElement('button');
@@ -39,19 +48,27 @@ export function mountFactoryPlan(parent, { selectSensor }) {
       <section class="detail-panel factory-panel" aria-labelledby="factory-title">
         <div class="factory-toolbar">
           <h2 id="factory-title">Fiktiver Fabrikplan</h2>
-          <div class="factory-zoom" role="group" aria-label="Kartenzoom">
-            <button type="button" data-zoom="out" aria-label="Verkleinern">−</button>
-            <output aria-label="Kartenzoom">100 %</output>
-            <button type="button" data-zoom="in" aria-label="Vergrößern">+</button>
-            <button type="button" data-zoom="reset">Gesamtansicht</button>
+          <div class="factory-zoom" role="group" aria-label="Ansicht">
+            <button type="button" data-zoom="out" aria-label="Herauszoomen: Hallenplan">−</button>
+            <button type="button" data-view="map" aria-pressed="true">Plan</button>
+            <button type="button" data-view="grid" aria-pressed="false">Module</button>
+            <button type="button" data-zoom="in" aria-label="Hineinzoomen: Module">+</button>
           </div>
         </div>
-        <div class="factory-map" role="group" aria-label="Hallenplan und Sensorpunkte" aria-describedby="factory-hint" tabindex="0">
+        <div class="factory-actions">
+          <button type="button" class="factory-fault" data-fault>Fehler simulieren</button>
+          <label class="factory-size">Kachelgröße
+            <select data-tiles><option value="s">Klein</option><option value="m" selected>Mittel</option><option value="l">Groß</option></select>
+          </label>
+          <p class="factory-alarm" role="status" aria-live="polite" data-state="ok">Alle Module in Ordnung.</p>
+        </div>
+        <div class="factory-map" role="group" aria-label="Hallenplan und Module" aria-describedby="factory-hint" tabindex="0">
           <img class="factory-floor" alt="" draggable="false">
           <svg class="factory-links" aria-hidden="true"></svg>
           <div class="factory-markers"></div>
         </div>
-        <p class="detail-meta factory-hint" id="factory-hint">Gruppensymbol antippen zum Hineinzoomen. Karte ziehen oder per Pfeiltasten verschieben.</p>
+        <div class="factory-grid" role="group" aria-label="Module nach ihrer Lage in der Halle" aria-describedby="factory-hint" tabindex="0" hidden></div>
+        <p class="detail-meta factory-hint" id="factory-hint">Hineinzoomen (+, zwei Finger oder Strg + Mausrad) zeigt die Module als Kacheln in ihrer Lage in der Halle. Herauszoomen zeigt wieder den Plan. Ein Modul im Alarm blinkt rot.</p>
       </section>
     </div>`;
   const find = (selector) => section.querySelector(selector);
@@ -61,219 +78,237 @@ export function mountFactoryPlan(parent, { selectSensor }) {
   const floor = find('.factory-floor');
   const links = find('.factory-links');
   const markers = find('.factory-markers');
-  const zoomOutput = find('output');
-  const zoomOut = find('[data-zoom="out"]');
-  const zoomIn = find('[data-zoom="in"]');
-  const camera = { zoom: 1, x: width / 2, y: height / 2 };
-  const groupButtons = [];
-  const sensorButtons = [];
-  const pointers = new Map();
-  let active = null;
-  let didDrag = false;
-  let gesture;
+  const grid = find('.factory-grid');
+  const status = find('.factory-alarm');
+  const tiles = find('[data-tiles]');
+  let mode = 'map';
   let modelRenderer;
+  const selectable = [];   // every button that selects a sensor (map and grid), for aria-pressed
 
-  function clearSelection() {
-    active?.setAttribute('aria-pressed', 'false');
-    active = null;
+  // ---- sensors -------------------------------------------------------------------------------
+  const heads = [];
+  for (const station of stations) {
+    for (let index = 0; index < station.heads; index++) {
+      const suffix = station.heads > 1 ? (index === 0 ? 'A' : 'B') : '';
+      heads.push({ key: station.name + '|' + suffix, station, suffix, index, unit: station.unit,
+        sensor: { ...station, suffix },
+        label: [station.name, station.model, suffix && 'Messkopf ' + suffix, station.quantity].filter(Boolean).join(' · ') });
+    }
+  }
+  const sim = createFactorySim(heads);
+
+  function choose(head, button) {
+    for (const item of selectable) item.setAttribute('aria-pressed', String(item === button));
+    selectSensor(head.sensor);
   }
 
+  // ---- plan (zoomed out) ------------------------------------------------------------------------
+  const mapMarkers = [];    // { station, heads: [keys], button }
   for (const station of stations) {
-    const paired = station.heads > 1;
-    if (paired) {
-      const group = marker(markers, station.name + ' · 2 Sensoren, Hallenbereich vergrößern', (event) => {
-        if (didDrag && event.detail !== 0) return;
-        camera.x = station.x;
-        camera.y = station.y - 40;
-        camera.zoom = splitZoom;
-        render();
-        sensorButtons.find(item => item.station === station).button.focus({ preventScroll: true });
-      });
-      group.querySelector('.factory-symbol').append('2');
-      groupButtons.push({ button: group, x: station.x, y: station.y - 40 });
-    }
-    for (let index = 0; index < station.heads; index++) {
-      const suffix = paired ? (index === 0 ? 'A' : 'B') : '';
-      const sensor = { ...station, suffix };
-      const label = [station.name, station.model, suffix && 'Messkopf ' + suffix, station.quantity].filter(Boolean).join(' · ');
-      const button = marker(markers, label, (event) => {
-        if (didDrag && event.detail !== 0) return;
-        clearSelection();
-        active = button;
-        button.setAttribute('aria-pressed', 'true');
-        selectSensor(sensor);
-      });
+    const own = heads.filter(head => head.station === station);
+    if (own.length > 1) {
+      const group = marker(markers, station.name + ' · ' + own.length + ' Sensoren, als Module anzeigen',
+        () => showGrid(station));
+      group.querySelector('.factory-symbol').append(String(own.length));
+      mapMarkers.push({ station, keys: own.map(head => head.key), button: group, x: station.x, y: station.y - 40 });
+    } else {
+      const head = own[0];
+      const button = marker(markers, head.label, () => choose(head, button));
       button.setAttribute('aria-pressed', 'false');
       button.setAttribute('aria-controls', 'recorded-view');
-      const symbol = button.querySelector('.factory-symbol');
-      const preview = document.createElement('img');
-      preview.className = 'factory-model';
-      preview.alt = '';
-      preview.draggable = false;
-      preview.hidden = true;
-      symbol.prepend(preview);
-      if (suffix) {
-        const head = document.createElement('span');
-        head.className = 'factory-head-letter';
-        head.textContent = suffix;
-        symbol.append(head);
-      }
-      const name = document.createElement('span');
-      name.className = 'factory-marker-name';
-      name.textContent = station.model;
-      const info = document.createElement('span');
-      info.className = 'factory-marker-info';
-      info.textContent = station.name + ' · ' + station.quantity;
-      button.append(name, info);
+      selectable.push(button);
       const line = document.createElementNS(svgNS, 'line');
       const dot = document.createElementNS(svgNS, 'circle');
       dot.setAttribute('r', '3');
       links.append(line, dot);
-      sensorButtons.push({ station, button, line, dot, paired, preview, angle: index,
-        x: station.x + (paired ? (index === 0 ? -70 : 70) : 0),
-        y: station.y - (paired && index === 0 ? 104 : 42),
-        targetX: station.x + (paired ? (index === 0 ? -7 : 7) : 0) });
+      mapMarkers.push({ station, keys: [head.key], button, line, dot, x: station.x, y: station.y - 42 });
     }
   }
 
-  function dimensions() {
-    const w = viewport.clientWidth;
-    const h = viewport.clientHeight;
-    return { w, h, ratio: Math.min(w / width, h / height) * camera.zoom };
+  function renderMap() {
+    const w = viewport.clientWidth, h = viewport.clientHeight;
+    const ratio = Math.min(w / width, h / height);
+    if (!ratio) return;
+    const left = (w - width * ratio) / 2, top = (h - height * ratio) / 2;
+    const px = x => left + x * ratio, py = y => top + y * ratio;
+    floor.style.width = width * ratio + 'px';
+    floor.style.height = height * ratio + 'px';
+    floor.style.transform = 'translate(' + left + 'px,' + top + 'px)';
+    for (const item of mapMarkers) {
+      item.button.style.left = px(item.x) + 'px';
+      item.button.style.top = py(item.y) + 'px';
+      if (item.line) {
+        item.line.setAttribute('x1', px(item.x)); item.line.setAttribute('y1', py(item.y));
+        item.line.setAttribute('x2', px(item.station.x)); item.line.setAttribute('y2', py(item.station.y));
+        item.dot.setAttribute('cx', px(item.station.x)); item.dot.setAttribute('cy', py(item.station.y));
+      }
+    }
   }
 
-  async function showModel(item) {
-    if (item.modelRequested) return;
-    item.modelRequested = true;
+  // ---- module grid (zoomed in) ------------------------------------------------------------------
+  const layout = gridLayout(stations.map(station => ({ x: station.x, y: station.y, station })));
+  grid.style.setProperty('--cols', layout.cols);
+  grid.style.setProperty('--rows', layout.rows);
+  const modules = [];       // { station, box, chip, ack, keys }
+  const tilesByKey = new Map();
+  for (const { item, col, row } of layout.cells) {
+    const { station } = item;
+    const box = document.createElement('section');
+    box.className = 'factory-module';
+    box.style.gridColumn = String(col + 1);
+    box.style.gridRow = String(row + 1);
+    box.setAttribute('aria-label', station.name);
+    box.innerHTML = `<header><div><h3></h3><p class="factory-module-place"></p></div><span class="factory-chip" data-state="ok">In Ordnung</span></header>
+      <div class="factory-module-sensors"></div>
+      <button type="button" class="factory-ack" hidden>Alarm quittieren</button>`;
+    box.querySelector('h3').textContent = station.name;
+    box.querySelector('.factory-module-place').textContent = station.position;
+    const list = box.querySelector('.factory-module-sensors');
+    const own = heads.filter(head => head.station === station);
+    for (const head of own) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'factory-tile';
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-controls', 'recorded-view');
+      button.innerHTML = `<img class="factory-tile-model" alt="" hidden><span class="factory-tile-name"></span>
+        <span class="factory-tile-quantity"></span><span class="factory-tile-value"><b>—</b> <small></small></span>
+        <span class="factory-tile-state">In Ordnung</span>`;
+      button.querySelector('.factory-tile-name').textContent = station.model + (head.suffix ? ' · Messkopf ' + head.suffix : '');
+      button.querySelector('.factory-tile-quantity').textContent = station.quantity;
+      button.querySelector('small').textContent = station.unit;
+      button.addEventListener('click', () => choose(head, button));
+      selectable.push(button);
+      list.append(button);
+      tilesByKey.set(head.key, { button, value: button.querySelector('b'), state: button.querySelector('.factory-tile-state'),
+        model: button.querySelector('.factory-tile-model'), head });
+    }
+    const ack = box.querySelector('.factory-ack');
+    ack.addEventListener('click', () => { for (const head of own) sim.acknowledge(head.key); update(); });
+    grid.append(box);
+    modules.push({ station, box, chip: box.querySelector('.factory-chip'), ack, keys: own.map(head => head.key) });
+  }
+
+  async function loadModels() {
     try {
       modelRenderer ??= import('./modellansicht.mjs');
       const { sensorPreview } = await modelRenderer;
-      item.preview.src = sensorPreview(item.station.mesh, item.angle);
-      item.preview.hidden = false;
-      item.button.toggleAttribute('data-has-model', true);
+      for (const tile of tilesByKey.values()) {
+        if (tile.model.src) continue;
+        tile.model.src = sensorPreview(tile.head.station.mesh, tile.head.index);
+        tile.model.hidden = false;
+      }
     } catch (error) {
       console.warn('Sensorvorschau konnte nicht geladen werden.', error);
     }
   }
 
-  function render() {
-    const { w, h, ratio } = dimensions();
-    if (!ratio) return;
-    const bound = (center, visible, size) => visible >= size ? size / 2
-      : Math.max(visible / 2, Math.min(size - visible / 2, center));
-    camera.x = bound(camera.x, w / ratio, width);
-    camera.y = bound(camera.y, h / ratio, height);
-    const left = w / 2 - camera.x * ratio;
-    const top = h / 2 - camera.y * ratio;
-    const px = x => left + x * ratio;
-    const py = y => top + y * ratio;
-    floor.style.width = width * ratio + 'px';
-    floor.style.height = height * ratio + 'px';
-    floor.style.transform = 'translate(' + left + 'px,' + top + 'px)';
-    const split = camera.zoom >= splitZoom - .001;
-    markers.dataset.level = camera.zoom >= detailZoom - .001 ? '2' : split ? '1' : '0';
-    zoomOutput.value = Math.round(camera.zoom * 100) + ' %';
-    zoomOut.setAttribute('aria-disabled', String(camera.zoom <= 1));
-    zoomIn.setAttribute('aria-disabled', String(camera.zoom >= zoomLevels.at(-1)));
-
-    function position(item, enabled) {
-      const x = px(item.x), y = py(item.y);
-      const visible = enabled && x >= 21 && x <= w - 21 && y >= 21 && y <= h - 21;
-      item.button.hidden = !visible;
-      item.button.style.left = x + 'px';
-      item.button.style.top = y + 'px';
-      return visible;
+  // ---- switching between plan and grid ---------------------------------------------------------
+  function setMode(next, focusStation) {
+    mode = next;
+    viewport.hidden = next !== 'map';
+    grid.hidden = next !== 'grid';
+    for (const button of section.querySelectorAll('[data-view]')) button.setAttribute('aria-pressed', String(button.dataset.view === next));
+    find('[data-zoom="out"]').setAttribute('aria-disabled', String(next === 'map'));
+    find('[data-zoom="in"]').setAttribute('aria-disabled', String(next === 'grid'));
+    if (next === 'grid') {
+      loadModels();
+      const target = modules.find(module => module.station === focusStation);
+      (target?.box.querySelector('.factory-tile') ?? grid).focus({ preventScroll: true });
+    } else {
+      renderMap();
+      viewport.focus({ preventScroll: true });
     }
-    for (const group of groupButtons) position(group, !split);
-    for (const item of sensorButtons) {
-      const visible = position(item, split || !item.paired);
-      if (visible && split) showModel(item);
-      item.line.style.display = item.dot.style.display = visible ? '' : 'none';
-      item.line.setAttribute('x1', px(item.x));
-      item.line.setAttribute('y1', py(item.y));
-      item.line.setAttribute('x2', px(item.targetX));
-      item.line.setAttribute('y2', py(item.station.y));
-      item.dot.setAttribute('cx', px(item.targetX));
-      item.dot.setAttribute('cy', py(item.station.y));
-    }
+    update();
   }
-
-  function stepZoom(increase) {
-    const levels = increase ? zoomLevels : [...zoomLevels].reverse();
-    const next = levels.find(zoom => increase ? zoom > camera.zoom + .001 : zoom < camera.zoom - .001);
-    if (next) { camera.zoom = next; render(); }
-  }
-
-  zoomIn.addEventListener('click', () => stepZoom(true));
-  zoomOut.addEventListener('click', () => stepZoom(false));
-  find('[data-zoom="reset"]').addEventListener('click', () => {
-    Object.assign(camera, { zoom: 1, x: width / 2, y: height / 2 });
-    render();
-  });
-  viewport.addEventListener('keydown', (event) => {
-    if (event.key === '+' || event.key === '-' || event.key === '−') {
-      event.preventDefault();
-      stepZoom(event.key === '+');
-      return;
-    }
-    const offsets = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-    const offset = offsets[event.key];
-    if (!offset || camera.zoom === 1) return;
-    event.preventDefault();
-    const { ratio } = dimensions();
-    camera.x += offset[0] * 55 / ratio;
-    camera.y += offset[1] * 55 / ratio;
-    render();
-    if (document.activeElement.hidden) viewport.focus({ preventScroll: true });
-  });
-
-  function measureGesture() {
-    const [first, second] = pointers.values();
-    if (!first) return null;
-    return second ? { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2,
-      distance: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)) }
-      : { x: first.x, y: first.y, distance: 0 };
-  }
-  function localPoint(event) {
-    const bounds = viewport.getBoundingClientRect();
-    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
-  }
-  viewport.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || pointers.size >= 2) return;
-    if (!pointers.size) didDrag = false;
-    pointers.set(event.pointerId, localPoint(event));
-    gesture = measureGesture();
-    if (pointers.size === 2) didDrag = true;
-  });
-  viewport.addEventListener('pointermove', (event) => {
-    if (!pointers.has(event.pointerId)) return;
-    pointers.set(event.pointerId, localPoint(event));
-    const next = measureGesture();
-    if (!didDrag && Math.hypot(next.x - gesture.x, next.y - gesture.y) < 6) return;
-    didDrag = true;
-    viewport.setPointerCapture(event.pointerId);
-    viewport.toggleAttribute('data-panning', true);
-    const before = dimensions();
-    const worldX = camera.x + (gesture.x - before.w / 2) / before.ratio;
-    const worldY = camera.y + (gesture.y - before.h / 2) / before.ratio;
-    if (next.distance) {
-      camera.zoom = Math.max(1, Math.min(zoomLevels.at(-1), camera.zoom * next.distance / gesture.distance));
-    }
-    const after = dimensions();
-    camera.x = worldX - (next.x - after.w / 2) / after.ratio;
-    camera.y = worldY - (next.y - after.h / 2) / after.ratio;
-    gesture = next;
-    render();
-  });
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture', 'pointerleave']) {
-    viewport.addEventListener(type, (event) => {
-      if (type === 'pointerleave' && viewport.hasPointerCapture(event.pointerId)) return;
-      if (type === 'lostpointercapture' && event.target !== viewport) return;
-      if (!pointers.delete(event.pointerId)) return;
-      gesture = measureGesture();
-      if (!gesture) viewport.removeAttribute('data-panning');
+  const showGrid = (station) => setMode('grid', station);
+  find('[data-zoom="in"]').addEventListener('click', () => setMode('grid'));
+  find('[data-zoom="out"]').addEventListener('click', () => setMode('map'));
+  for (const button of section.querySelectorAll('[data-view]')) button.addEventListener('click', () => setMode(button.dataset.view));
+  for (const surface of [viewport, grid]) {
+    surface.addEventListener('keydown', (event) => {
+      if (event.key === '+') { event.preventDefault(); setMode('grid'); }
+      if (event.key === '-' || event.key === '−') { event.preventDefault(); setMode('map'); }
     });
+    surface.addEventListener('wheel', (event) => {      // trackpad pinch and Ctrl + wheel
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setMode(event.deltaY < 0 ? 'grid' : 'map');
+    }, { passive: false });
+    const pointers = new Map();
+    let startDistance = 0;
+    surface.addEventListener('pointerdown', (event) => {
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 2) {
+        const [a, b] = pointers.values();
+        startDistance = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+    });
+    surface.addEventListener('pointermove', (event) => {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size !== 2 || !startDistance) return;
+      const [a, b] = pointers.values();
+      const scale = Math.hypot(a.x - b.x, a.y - b.y) / startDistance;
+      if (scale > 1.25 && mode === 'map') { startDistance = 0; setMode('grid'); }
+      if (scale < 0.8 && mode === 'grid') { startDistance = 0; setMode('map'); }
+    });
+    for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+      surface.addEventListener(type, (event) => { pointers.delete(event.pointerId); if (pointers.size < 2) startDistance = 0; });
+    }
   }
+
+  // ---- tile size ("anpassbar") ------------------------------------------------------------------
+  try { tiles.value = localStorage.getItem(tileSizeKey) || 'm'; } catch { /* storage may be blocked */ }
+  grid.dataset.size = tiles.value;
+  tiles.addEventListener('change', () => {
+    grid.dataset.size = tiles.value;
+    try { localStorage.setItem(tileSizeKey, tiles.value); } catch { /* storage may be blocked */ }
+  });
+
+  // ---- live demo values and alarms -------------------------------------------------------------
+  const seen = new Map();   // key -> last alarm state, to announce only changes
+  function update() {
+    const readings = sim.read(clock());
+    const byKey = new Map(readings.map(r => [r.key, r]));
+    const active = [];
+    for (const r of readings) {
+      const tile = tilesByKey.get(r.key);
+      tile.value.textContent = format(r.value, r.digits);
+      tile.button.dataset.alarm = r.alarm;
+      tile.state.textContent = alarmText[r.alarm];
+      if (r.alarm === 'active') active.push(r);
+      if (r.alarm === 'active' && seen.get(r.key) !== 'active') {
+        const head = tile.head;
+        status.textContent = 'Alarm: ' + head.label + ': ' + format(r.value, r.digits) + ' ' + r.unit
+          + ' (Grenzen ' + format(r.lower, r.digits) + '–' + format(r.upper, r.digits) + ' ' + r.unit + ')';
+      }
+      seen.set(r.key, r.alarm);
+    }
+    for (const module of modules) {
+      const state = worstAlarm(module.keys.map(key => byKey.get(key).alarm));
+      module.box.dataset.alarm = state;
+      module.chip.dataset.state = state;
+      module.chip.textContent = alarmText[state];
+      module.ack.hidden = state !== 'latched';
+    }
+    for (const item of mapMarkers) item.button.dataset.alarm = worstAlarm(item.keys.map(key => byKey.get(key).alarm));
+    const open = readings.filter(r => r.alarm !== 'ok').length;
+    status.dataset.state = active.length ? 'active' : open ? 'latched' : 'ok';
+    if (!active.length) {
+      const text = open ? open + (open === 1 ? ' Alarm' : ' Alarme') + ' zu quittieren (in der Modulansicht).' : 'Alle Module in Ordnung.';
+      if (status.textContent !== text) status.textContent = text;
+    }
+  }
+  find('[data-fault]').addEventListener('click', () => {
+    const key = sim.injectFault(clock());
+    update();
+    const head = heads.find(h => h.key === key);
+    status.textContent = 'Fehler simuliert: ' + head.label + '.';
+  });
+  setInterval(() => { if (!content.hidden) update(); }, 200);
+
+  // ---- open / close ----------------------------------------------------------------------------
   toggle.addEventListener('click', () => {
     const open = content.hidden;
     content.hidden = !open;
@@ -281,10 +316,10 @@ export function mountFactoryPlan(parent, { selectSensor }) {
     toggle.firstElementChild.textContent = open ? 'Fabrikplan ausblenden' : 'Fabrikplan anzeigen';
     if (open) {
       if (!floor.getAttribute('src')) floor.src = new URL('./grundriss.svg', import.meta.url);
-      render();
+      setMode(mode);
     }
   });
   parent.append(section);
-  new ResizeObserver(render).observe(viewport);
-  return clearSelection;
+  new ResizeObserver(() => { if (mode === 'map') renderMap(); }).observe(viewport);
+  return () => { for (const item of selectable) item.setAttribute('aria-pressed', 'false'); };
 }
