@@ -510,3 +510,18 @@ test('"fine" for a window widens the evaluation limits to its lowest and highest
   assert.equal(paused.event.changed, false, 'paused learning keeps the limits');
   assert.throws(() => engine.acceptRange(profile, {}), /ungültig/);
 });
+
+test('evaluation limits follow the training data: they widen to its range, never narrow, and can be undone', () => {
+  engine.useSensor('ild1900');
+  const profile = engine.createInitialState().profiles[0];
+  const [lower, upper] = [profile.learnedLower, profile.learnedUpper];
+  const fit = engine.fitToTraining(profile, 21.96, 26.04);
+  assert.ok(fit.profile.learnedLower <= 21.96 && fit.profile.learnedUpper >= 26.04);
+  assert.equal(fit.event.type, 'training');
+  assert.equal(fit.profile.lower, profile.lower, 'the target limits stay');
+  assert.equal(engine.fitToTraining(fit.profile, 22.5, 25.5), null, 'a narrower range changes nothing');
+  assert.equal(engine.fitToTraining({ ...profile, learning: false }, 20, 30), null, 'paused learning keeps the limits');
+  assert.equal(engine.fitToTraining(profile, NaN, 3), null);
+  const undone = engine.undoLearning(fit.profile);
+  assert.deepEqual([undone.learnedLower, undone.learnedUpper], [lower, upper]);
+});

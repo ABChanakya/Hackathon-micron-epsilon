@@ -193,16 +193,18 @@ class Hub:
     def _ml_config(self, body):
         return self.ml.set_config(body)
 
-    def _ml_learn(self, info, feats, label="normal", note=""):
+    def _ml_learn(self, info, feats, label="normal", note="", value_range=None):
         def same(a, b):                    # "ILD1900" (older recordings) matches "ILD1900-10"
             a, b = str(a.get("model") or ""), str(b.get("model") or "")
             return bool(a) and (a == b or a.startswith(b + "-") or b.startswith(a + "-"))
         if not self.ml.key or not same(info, self.ml.info) or info.get("unit", "mm") != self.ml.unit:
             raise RuntimeError("connect the sensor this recording was made with first")
-        return {"learned_windows": self.ml.learn_windows(feats, label, note), "label": label, **self.ml.status()}
+        return {"learned_windows": self.ml.learn_windows(feats, label, note, value_range), "label": label, **self.ml.status()}
 
     # ---- recording --------------------------------------------------------------------
-    def _start_rec(self, label="", notes="", duration_s=None):
+    def _start_rec(self, label="", notes="", duration_s=None, cls=""):
+        if cls not in ("", "normal", "anomaly"):
+            raise RuntimeError("cls must be normal, anomaly or empty")
         if self.rec:
             return self.state()
         if self.status != "streaming":
@@ -225,11 +227,26 @@ class Hub:
                          "tare_mm": self.tare, "started": datetime.now().isoformat(timespec="seconds"),
                          "stopped": None, "duration_s": None, "samples": 0, "valid": 0, "errors": 0,
                          "errors_by_code": {}, "dropped": 0, "min_mm": None, "max_mm": None, "mean_mm": None,
-                         "planned_duration_s": duration_s}
+                         "planned_duration_s": duration_s, "class": cls or None, "learned": False}
         self._rec_stats = {"t0": None, "t1": None, "sum": 0.0, "drop0": self.dropped_total}
         self.rec_until = time.perf_counter() + float(duration_s) if duration_s else None
         self._write_meta()
         return self.state()
+
+    def _learn_recording(self, m):
+        """A recording labeled normal or anomaly is labeled training data: the anomaly agent learns it right away
+        (not for replays, whose data it has learned already from the original recording)."""
+        if m.get("class") not in ("normal", "anomaly") or getattr(self.src, "kind", "") == "replay" or not m.get("valid"):
+            return
+        try:
+            from anomaly import csv_range, features_from_csv
+            path = os.path.join(REC_DIR, m["file"])
+            feats = features_from_csv(path, self.ml.cfg["window_s"])
+            if feats:
+                self.ml.learn_windows(feats, m["class"], m.get("label") or m["file"], csv_range(path))
+                m["learned"] = True
+        except Exception as e:      # never lose the recording because learning failed
+            m["learn_error"] = str(e)
 
     def _write_meta(self):
         with open(self.rec_path[:-4] + ".json", "w") as f:
@@ -243,6 +260,7 @@ class Hub:
             m["duration_s"] = round(s["t1"] - s["t0"], 3) if s["t0"] is not None else 0.0
             m["mean_mm"] = round(s["sum"] / m["valid"], 6) if m["valid"] else None
             m["dropped"] = self.dropped_total - s["drop0"]
+            self._learn_recording(m)
             self._write_meta()
             self.rec_until = None
         return self.state()

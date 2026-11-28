@@ -11,11 +11,11 @@ class Feeder:
     def __init__(self, agent):
         self.agent, self.t, self.rng = agent, 0.0, random.Random(7)
 
-    def run(self, seconds, level=5.0, noise=0.002, invalid=False, dropped=0):
+    def run(self, seconds, level=5.0, noise=0.002, invalid=False, dropped=0, intensity=None):
         for _ in range(int(seconds * RATE)):
             self.t += 1 / RATE
             v = None if invalid else level + self.rng.gauss(0, noise)
-            self.agent.feed(self.t, v, {}, dropped, 1.8e9)
+            self.agent.feed(self.t, v, {} if intensity is None else {"intensity_pct": intensity + self.rng.gauss(0, 0.3)}, dropped, 1.8e9)
 
 
 class AnomalyAgentTest(unittest.TestCase):
@@ -146,6 +146,48 @@ class AnomalyAgentTest(unittest.TestCase):
         again.start(INFO, "sim")
         self.assertTrue(again._ready())
         self.assertEqual(again.frame()["state"], "watching")
+
+    def _labeled_recording(self, level, intensity, n=40, label="normal"):
+        rng = random.Random(int(level * 100))
+        feats = [{"mean": level + rng.gauss(0, 0.01), "std": 0.002, "p2p": 0.0115, "slope": 0.0005, "jitter": 0.0029,
+                  "err_frac": 0.0, "intensity": intensity + rng.gauss(0, 0.3)} for _ in range(n)]
+        return feats, (level - 0.05, level + 0.05)
+
+    def test_labeled_recordings_set_the_limits_and_the_matching_radius_from_the_data(self):
+        for name, level, inten in (("white", 4.0, 27), ("paper", 5.5, 45), ("grey", 3.0, 44)):
+            feats, rng_ = self._labeled_recording(level, inten)
+            self.agent.learn_windows(feats, "normal", name, rng_)
+        st = self.agent.status()
+        self.assertEqual(st["labeled_windows"], 120)
+        lo, hi = self.agent.train_range
+        self.assertAlmostEqual(lo, 2.95 + self.agent.offset, places=3)      # the limits follow the training data ...
+        self.assertAlmostEqual(hi, 5.55 + self.agent.offset, places=3)
+        self.assertIsNotNone(st["auto_radius"], "... and so does the matching radius")
+        self.assertGreaterEqual(st["auto_radius"], 2.0)
+        self.agent.set_config({"label_match_radius": 7})
+        self.assertEqual(self.agent.status()["match_radius"], 7.0, "a fixed value overrides the calibration")
+        self.agent.set_config({"label_match_radius": None})
+        self.assertEqual(self.agent.status()["match_radius"], st["auto_radius"])
+
+    def test_data_that_matches_no_labeled_data_asks_a_person_and_the_answer_becomes_labeled_data(self):
+        for name, level, inten in (("white", 5.0, 27), ("paper", 5.0, 29), ("grey", 5.0, 31)):
+            feats, rng_ = self._labeled_recording(level, inten)
+            self.agent.learn_windows(feats, "normal", name, rng_)
+        self.agent.set_config({"sensitivity": 100})           # only the match against labeled data decides here
+        f = self.feed
+        f.run(2, level=5.0, intensity=27)                     # known: quiet
+        self.assertEqual(self.pending(), [])
+        f.run(3, level=5.0, intensity=8)                      # a surface unlike any labeled recording
+        ev = self.pending()
+        self.assertTrue(ev)
+        self.assertEqual(ev[-1]["reason"], "no_match")
+        self.assertIn(ev[-1]["nearest"]["note"], ("white", "paper", "grey"))
+        self.agent.label(ev[-1]["id"], "normal", "dunkle Folie", 5)
+        self.agent.cfg["cooldown_s"] = 0
+        import time as _t
+        self.agent.grace_until = 0
+        f.run(1, level=5.0, intensity=27); f.run(3, level=5.0, intensity=8)   # the same surface again: now known
+        self.assertEqual([e for e in self.pending() if e["reason"] == "no_match"], [])
 
     def test_shipped_seed_model_is_loaded_on_a_fresh_machine(self):
         seed = anomaly.AnomalyAgent(tempfile.mkdtemp(), {**anomaly.DEFAULTS})

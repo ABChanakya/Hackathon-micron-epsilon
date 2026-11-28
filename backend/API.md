@@ -50,7 +50,7 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | `POST /api/settings` | any subset of `{rate_khz, averaging, channels}` (`REPLAY`: `{speed, loop}`) | settings | Change settings |
 | `POST /api/tare` | `{"on": true \| false}` | State | Software zero: subtract the current 1 s mean from displayed values. Recordings stay raw |
 | `GET /api/history?seconds=10&bins=300` | – | `[{t, min, max, mean}]` | Recent valid readings, bucketed (prefills the live chart; tare applied) |
-| `POST /api/record/start` | `{label?, notes?, duration_s?}` | State | Start a recording. With `duration_s` it stops by itself |
+| `POST /api/record/start` | `{label?, notes?, duration_s?, cls?}` | State | Start a recording. With `duration_s` it stops by itself. `cls` = `normal` or `anomaly` makes it labeled training data: on stop the anomaly agent learns it (not for replays) |
 | `POST /api/record/stop` | – | State | Stop it and finish the metadata |
 | `GET /api/recordings` | – | `[metadata]` | All recordings, newest first (see "Recordings") |
 | `GET /api/recordings/{file}/series?bins=500&channel=dist_mm` | – | `[{t, min, max, mean}]` | A recording bucketed for a chart. `t` = seconds from its start. `channel` is any numeric CSV column |
@@ -174,6 +174,17 @@ spreads (robust z). Shifts of `mean` and `intensity` count both ways; noise-type
 | flagged | score ≥ `sensitivity` for `consecutive` windows | A `pending` event. A person answers it: `normal` puts it into the normal set (later windows like it are not flagged), `anomaly` into the anomaly set (later windows like it become `anomaly` events with `known: true`, without asking) |
 | error | invalid or lost samples ≥ `error_fraction` of the window, a value beyond `hard_min`/`hard_max`, or score ≥ `reject_z` | Discarded: never learned, and written to `error_file` |
 
+**Labeled data and "no match".** Everything labeled is kept as a library of windows: recordings with `cls` (or learned
+via `/api/ml/learn`) and the person's answers. A window that is close to none of it (nearest labeled window farther than the
+match radius) becomes a flag with `reason: "no_match"` and `nearest: {note, cls, distance}` (the closest known data), and the
+person's answer becomes labeled data too, so the same thing is not asked twice. Distance is measured in the typical spread of a
+feature *inside one recording*. The thresholds come from the training data, not from fixed numbers: the **match radius**
+is calibrated from how far windows of one labeled recording are from the nearest window of another (95th percentile + 25 %;
+`label_match_radius: null` = automatic), and **`train_range`** (lowest to highest value of everything labeled normal, as shown)
+is what the monitor fits its evaluation limits to, so the limits change to the data and not the other way round. Honest limit
+on the ILD1900 recordings: grey stairs, metal stairs and black-and-white paper look alike in all signal features, so "unknown
+material" cannot be told apart sharply; the answers are what teaches it over time.
+
 **"Fine" teaches the whole stretch.** Answering `normal` with `learn_s` does not only learn the flagged windows. All windows of the
 last `learn_s` seconds become normal examples and baseline, and for every feature the lowest and highest value seen in them is
 stored as a *confirmed range* (`ok_ranges`, saved in the model). A later window whose unusual features all lie inside a
@@ -205,6 +216,8 @@ settings through `/api/settings` starts the learning again (human labels are kep
 | `consecutive` | `2` | Unusual windows in a row before a flag |
 | `cooldown_s` | `5` | Quiet time after a flag |
 | `match_radius` | `3` | How close a window must be to a labelled example to count as "like it" |
+| `label_match` | `true` | Ask a person when a window matches no labeled data |
+| `label_match_radius` | `null` | Distance from labeled data that still counts as a match; `null` = calibrated from the data |
 | `learn_online` | `true` | Keep learning normal windows while watching (follows slow drift) |
 | `error_fraction` | `0.5` | Share of invalid or lost samples from which a window is an error |
 | `reject_z` | `null` | Score from which a window is an error instead of a flag (`null` = off) |

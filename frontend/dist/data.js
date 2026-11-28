@@ -286,6 +286,28 @@ export function acceptRange(profile, suggestion, note = '', t = 0) {
   return { profile: next, event };
 }
 
+// The evaluation limits follow the training data: widen them to the range of everything labeled normal (never narrower).
+// The limits change to fit the data, not the other way round.
+export function fitToTraining(profile, lo, hi) {
+  if (!finite(lo) || !finite(hi) || lo > hi) return null;
+  const next = clone(profile);
+  if (!next.learning) return null;
+  const previousLower = next.learnedLower ?? next.lower;
+  const previousUpper = next.learnedUpper ?? next.upper;
+  const margin = SENSOR.kind === 'temperature' ? 0.05 : 0.005;
+  next.learnedLower = round(Math.max(SENSOR.rangeStart, Math.min(previousLower, lo - margin)));
+  next.learnedUpper = round(Math.min(SENSOR.rangeEnd, Math.max(previousUpper, hi + margin)));
+  if (next.learnedLower === previousLower && next.learnedUpper === previousUpper) return null;
+  next.version += 1;
+  const event = {
+    id: generateId('training'), type: 'training', at: new Date().toISOString(), version: next.version, changed: true,
+    previousLower, previousUpper, nextLower: next.learnedLower, nextUpper: next.learnedUpper, range: [lo, hi],
+    reason: 'Auswertungsgrenzen an die Trainingsdaten angepasst.',
+  };
+  next.history = [...(next.history ?? []), clone(event)];
+  return { profile: next, event };
+}
+
 function adjustmentEvent(profile, type, lower, upper, reason, targetId) {
   const next = clone(profile);
   const previousLower = next.learnedLower ?? next.lower;
@@ -308,7 +330,7 @@ export function undoLearning(profile) {
   const baseline = history.findLastIndex(item => item.type === 'profile');
   const current = history.slice(baseline + 1);
   const reverted = new Set(current.filter(item => item.type === 'undo').map(item => item.targetId));
-  const last = [...current].reverse().find(item => item.changed && ['feedback', 'reset'].includes(item.type) && !reverted.has(item.id));
+  const last = [...current].reverse().find(item => item.changed && ['feedback', 'reset', 'training'].includes(item.type) && !reverted.has(item.id));
   if (!last) return clone(profile);
   return adjustmentEvent(profile, 'undo', last.previousLower, last.previousUpper, 'Letzte Lernanpassung rückgängig gemacht.', last.id);
 }

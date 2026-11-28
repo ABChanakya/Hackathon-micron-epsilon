@@ -58,6 +58,7 @@ class RecReq(BaseModel):
     label: str = ""
     notes: str = ""
     duration_s: float | None = None      # stop automatically after this many seconds
+    cls: str = ""                        # "normal" | "anomaly": labeled training data, learned by the anomaly agent on stop
 
 
 class CmdReq(BaseModel):
@@ -160,7 +161,7 @@ async def tare(body: dict):
 @app.post("/api/record/start")
 async def rec_start(r: RecReq | None = None):
     r = r or RecReq()
-    return await _do("_start_rec", r.label, r.notes, r.duration_s)
+    return await _do("_start_rec", r.label, r.notes, r.duration_s, r.cls)
 
 
 @app.post("/api/record/stop")
@@ -310,7 +311,8 @@ async def ml_learn(body: dict):
     feats = await asyncio.to_thread(anomaly.features_from_csv, path, hub.ml.cfg["window_s"])
     if not feats:
         raise HTTPException(400, "the recording has no usable windows")
-    return await _do("_ml_learn", meta.get("info") or {}, feats, label, meta.get("label") or os.path.basename(path))
+    value_range = await asyncio.to_thread(anomaly.csv_range, path)
+    return await _do("_ml_learn", meta.get("info") or {}, feats, label, meta.get("label") or os.path.basename(path), value_range)
 
 
 @app.get("/api/ml/errors")

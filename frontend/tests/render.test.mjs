@@ -143,3 +143,12 @@ test('the 3D sensor view is only offered when the device check calls for it', ()
   assert.equal(has3d(), false, 'the thermometer never gets the 3D sensor');
   engine.useSensor('ild1900');
 });
+
+test('the recording controls and the toast helper are defined (a merge once dropped them)', () => {
+  const context = viewContext();
+  for (const name of ['startRecord', 'finishRecord', 'saveRecording', 'stopRecord', 'toast', 'setProfile', 'fitLimitsToTraining']) {
+    assert.equal(vm.runInContext(`typeof ${name}`, context), 'function', name);
+  }
+  engine.useSensor('ild1900');
+  assert.match(vm.runInContext("openDialog.toString()", context), /record-class/);
+});
