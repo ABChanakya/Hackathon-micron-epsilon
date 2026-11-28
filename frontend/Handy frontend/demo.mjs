@@ -20,9 +20,10 @@ export const DEMO_DATASETS = [
   },
 ];
 
-export function demoWindow(dataset, elapsed) {
+export function demoWindow(dataset, elapsed, { fixedSections = false } = {}) {
   const duration = 30;
-  const start = Math.max(0, elapsed - duration);
+  const start = fixedSections ? Math.floor(elapsed / duration) * duration
+    : Math.max(0, elapsed - duration);
   const firstIndex = Math.ceil(start * DEMO_RATE);
   const lastIndex = Math.floor(elapsed * DEMO_RATE);
   const samples = [];

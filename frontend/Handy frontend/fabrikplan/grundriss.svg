@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 505">
+<title>Fiktiver Fabrikplan</title>
+<style>
+.floor{fill:url(#tiles);stroke:#657e963d;stroke-width:11;stroke-linejoin:round}
+.outer,.wall{fill:none;stroke-linejoin:miter;stroke-linecap:square}
+.outer{stroke:#b0c1d1;stroke-width:4px;filter:drop-shadow(0 0 3px #9eb8d055)}
+.wall{stroke:#768da0;stroke-width:2.6px}.corridor{fill:#263543}
+.apron{fill:url(#hatch);stroke:#65798d;stroke-width:1}
+.equipment{fill:#273747;stroke:#8395a6;stroke-width:1.35;stroke-linejoin:round}
+.equipment use{filter:brightness(.77) saturate(.72)}
+.door{fill:none;stroke:#9eafbf;stroke-width:1.2}.gate{stroke:#8fa4b7;stroke-width:1.8;fill:#394b5c}
+.map-labels text{font:650 16px Geist,system-ui,sans-serif;letter-spacing:-.5px;fill:#e9edf1;paint-order:stroke;stroke:#151d26;stroke-width:4;stroke-linejoin:round}
+.micro{font-size:11px;letter-spacing:1.4px;fill:#c1cfdb}.compass{text-anchor:middle;fill:#b6c8d9;font:600 12px monospace}
+</style>
+      <defs>
+        <pattern id="tiles" width="24" height="24" patternUnits="userSpaceOnUse"><rect width="24" height="24" fill="#151d26"/><path d="M24 0H0V24" fill="none" stroke="#2a3642" stroke-width=".85"/></pattern>
+        <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse"><path d="M-2 2l4-4m-2 9l7-7m-2 9l4-4" stroke="#415163" fill="none"/></pattern>
+        <pattern id="rollers" width="7" height="20" patternUnits="userSpaceOnUse"><rect width="7" height="20" fill="#243342"/><path d="M2 0v20" stroke="#657986" stroke-width="1.4"/></pattern>
+        <g id="rack"><rect width="56" height="24" fill="#e1e5e8"/><path d="M0 12h56M14 0v24m14-24v24m14-24v24"/><path d="m2 2 10 8m4 4 10 8m18-20 10 8" stroke="#a8b0b7"/></g>
+        <g id="cnc"><rect x="0" y="2" width="49" height="33" rx="2"/><rect x="4" y="6" width="28" height="22" rx="1" fill="#f9fafb"/><circle cx="18" cy="17" r="7"/><circle cx="18" cy="17" r="2"/><path d="M36 8h8m-8 5h8m-8 5h8"/><rect x="35" y="25" width="10" height="6" fill="#9ca6ae"/><path d="M5 35v3m36-3v3"/></g>
+        <g id="bench"><rect width="53" height="21" rx="1"/><path d="M3 4h47M8 21v4m36-4v4"/><rect x="5" y="7" width="10" height="9" fill="#f9fafb"/><circle cx="40" cy="12" r="4"/></g>
+        <g id="robot"><rect width="43" height="31" rx="3" fill="#e7eaed"/><circle cx="13" cy="17" r="8"/><path d="m13 17 12-10 9 8" fill="none" stroke-width="4"/><circle cx="25" cy="7" r="2.5"/><path d="m34 15 3-2m-3 2 1 4"/></g>
+        <g id="test"><rect width="58" height="28" rx="2"/><rect x="6" y="6" width="30" height="16" fill="#fff"/><path d="M11 20V9h16v7m-4-1h8"/><rect x="42" y="6" width="11" height="7" fill="#aab3ba"/><circle cx="46" cy="20" r="2"/></g>
+        <g id="desk"><rect width="33" height="15" rx="1" fill="#f8f9fa"/><rect x="10" y="3" width="12" height="5"/><rect x="11" y="17" width="11" height="6" rx="3"/></g>
+        <g id="fan"><rect width="29" height="28" rx="2"/><circle cx="14.5" cy="14" r="10"/><path d="m8 7 13 14m0-14L8 21"/></g>
+        <g id="box"><rect width="18" height="16" fill="#eff1f3"/><path d="M8 0v16m3-16v16"/></g>
+        <g id="truck"><rect x="3" y="1" width="42" height="19" rx="1" fill="#e2e7eb"/><rect x="47" y="3" width="14" height="15" rx="3"/><path d="M55 5v11m-7-12v13M6 4h34" fill="none"/><path d="M7 0h7m20 0h6M7 21h7m20 0h6" stroke-width="2.5"/></g>
+      </defs>
+      <g id="drawing">
+        <g class="compass" transform="translate(1327 48)"><text x="0" y="-8">N</text><path d="m0 0-6 19 6-4 6 4z"/></g>
+        <path class="apron" d="M25 215h85v162H25z M1290 307h84v141h-84z"/>
+        <path class="floor" d="M110 170H334V31H1066V170H1290V468H110Z"/>
+        <path class="corridor" d="M335 124h730v46H335z"/>
+        <g id="equipment" class="equipment">
+    <use href="#truck" transform="translate(107 257) scale(-1 1)"/>
+    <use href="#truck" transform="translate(107 318) scale(-1 1)"/>
+    <use href="#truck" transform="translate(1292 330)"/>
+    <use href="#truck" transform="translate(1292 391)"/>
+    <use href="#rack" transform="translate(215 219)"/>
+    <use href="#rack" transform="translate(215 277)"/>
+    <use href="#rack" transform="translate(127 424)"/>
+    <use href="#rack" transform="translate(209 424)"/>
+    <use href="#rack" transform="translate(310 229)"/>
+    <use href="#rack" transform="translate(374 229)"/>
+    <use href="#rack" transform="translate(310 270)"/>
+    <use href="#rack" transform="translate(374 270)"/>
+    <use href="#rack" transform="translate(315 388)"/>
+    <use href="#rack" transform="translate(390 388)"/>
+    <use href="#box" transform="translate(321 432)"/>
+    <use href="#box" transform="translate(344 432)"/>
+    <use href="#box" transform="translate(398 432)"/>
+    <use href="#box" transform="translate(421 432)"/>
+    <rect x="340" y="320" width="121" height="15" rx="5" fill="url(#rollers)"/>
+    <use href="#cnc" transform="translate(496 223)"/>
+    <use href="#cnc" transform="translate(564 223)"/>
+    <use href="#cnc" transform="translate(632 223)"/>
+    <rect x="501" y="267" width="182" height="15" rx="5" fill="url(#rollers)"/>
+    <use href="#robot" transform="translate(735 223)"/>
+    <use href="#robot" transform="translate(802 223)"/>
+    <use href="#robot" transform="translate(868 223)"/>
+    <rect x="736" y="264" width="176" height="15" rx="5" fill="url(#rollers)"/>
+    <use href="#cnc" transform="translate(496 380)"/>
+    <use href="#cnc" transform="translate(564 380)"/>
+    <use href="#cnc" transform="translate(632 380)"/>
+    <rect x="501" y="424" width="182" height="15" rx="5" fill="url(#rollers)"/>
+    <use href="#robot" transform="translate(735 380)"/>
+    <use href="#robot" transform="translate(802 380)"/>
+    <use href="#robot" transform="translate(868 380)"/>
+    <rect x="736" y="421" width="176" height="15" rx="5" fill="url(#rollers)"/>
+    <rect x="606" y="320" width="91" height="15" rx="5" fill="url(#rollers)"/>
+    <path d="M617 282v38h12v-38z M749 279v41h12v-41z M866 336v41h12v-41z" fill="url(#rollers)"/>
+    <rect x="730" y="320" width="178" height="15" rx="5" fill="url(#rollers)"/>
+    <use href="#test" transform="translate(949 224)"/>
+    <use href="#test" transform="translate(1034 224)"/>
+    <use href="#test" transform="translate(949 270)"/>
+    <use href="#test" transform="translate(1034 270)"/>
+    <rect x="962" y="320" width="132" height="15" rx="5" fill="url(#rollers)"/>
+    <path d="M1037 315h32v5h-12v5h-8v-5h-12z M1037 336h32v5h-32z"/>
+    <rect x="398" y="322" width="18" height="12" rx="1" fill="#f8f9fa"/>
+    <rect x="653" y="322" width="18" height="12" rx="1" fill="#f8f9fa"/>
+    <rect x="1044" y="322" width="18" height="12" rx="1" fill="#f8f9fa"/>
+    <use href="#bench" transform="translate(949 414)"/>
+    <use href="#bench" transform="translate(1038 414)"/>
+    <use href="#desk" transform="translate(974 441)"/>
+    <use href="#desk" transform="translate(1054 441)"/>
+    <use href="#box" transform="translate(1133 235)"/>
+    <use href="#box" transform="translate(1156 235)"/>
+    <use href="#box" transform="translate(1179 235)"/>
+    <use href="#box" transform="translate(1221 235)"/>
+    <use href="#box" transform="translate(1244 235)"/>
+    <use href="#bench" transform="translate(1136 273)"/>
+    <use href="#bench" transform="translate(1212 273)"/>
+    <use href="#rack" transform="translate(1136 428)"/>
+    <use href="#rack" transform="translate(1216 428)"/>
+    <use href="#bench" transform="translate(354 84)"/>
+    <use href="#bench" transform="translate(431 84)"/>
+    <use href="#bench" transform="translate(510 84)"/>
+    <use href="#fan" transform="translate(617 81)"/>
+    <use href="#fan" transform="translate(655 81)"/>
+    <use href="#fan" transform="translate(701 81)"/>
+    <use href="#fan" transform="translate(739 81)"/>
+    <use href="#desk" transform="translate(804 82)"/>
+    <use href="#desk" transform="translate(851 82)"/>
+    <use href="#desk" transform="translate(920 82)"/>
+    <use href="#desk" transform="translate(972 82)"/>
+    <use href="#desk" transform="translate(1018 82)"/>
+  </g>
+        <!-- Openings in the walls align with the aisles, loading bays and side-wing doors. -->
+        <path class="outer" d="M110 228V170H334V31H1066V170H1290V326 M1290 354v34m0 28v52H110V342m0-28v-33m0-28v-25"/>
+        <path class="wall" d="M334 124h62m26 0h245m26 0h209m26 0h138 M594 31v93m186-93v93 M334 170h181m28 0h285m28 0h210
+          M292 170v178m0 32v88 M478 170v142m0 31v125 M712 170v142m0 31v125 M934 170v142m0 31v125 M1114 170v142m0 31v125
+          M110 306h61m30 0h91 M934 362h80m25 0h75 M1114 362h61m32 0h83"/>
+        <g id="doors">
+    <path class="door" d="M396 124v-26a26 26 0 0 1 26 26"/>
+    <path class="door" d="M667 124v-26a26 26 0 0 1 26 26"/>
+    <path class="door" d="M902 124v-26a26 26 0 0 1 26 26"/>
+    <path class="door" d="M515 170v-28a28 28 0 0 1 28 28"/>
+    <path class="door" d="M828 170v-28a28 28 0 0 1 28 28"/>
+    <path class="door" d="M1014 362v-25a25 25 0 0 1 25 25"/>
+    <rect class="gate" x="107.5" y="253" width="5" height="28"/>
+    <rect class="gate" x="107.5" y="314" width="5" height="28"/>
+    <rect class="gate" x="1287.5" y="326" width="5" height="28"/>
+    <rect class="gate" x="1287.5" y="388" width="5" height="28"/>
+  </g>
+        <g class="map-labels">
+          <text x="128" y="203">Wareneingang</text>
+          <text x="128" y="402">Rohmateriallager</text>
+          <text x="307" y="203">Materialbereitstellung</text>
+          <text x="496" y="203">Mechanische Bearbeitung</text>
+          <text x="731" y="203">Montage</text>
+          <text x="949" y="203">Prüfstände</text>
+          <text x="949" y="392">Qualitätslabor</text>
+          <text x="1130" y="203">Verpackung</text>
+          <text x="1130" y="389">Versand</text>
+          <text x="352" y="61">Instandhaltungswerkstatt</text>
+          <text x="611" y="61">Technikräume</text>
+          <text x="798" y="61">Bürobereich</text>
+        </g>
+        <g class="micro"><text x="700" y="152" text-anchor="middle">ZENTRALER VERBINDUNGSGANG</text><text x="120" y="155">WESTFLÜGEL</text><text x="1280" y="155" text-anchor="end">OSTFLÜGEL</text></g>
+      </g>
+</svg>
