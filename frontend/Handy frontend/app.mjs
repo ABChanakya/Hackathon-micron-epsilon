@@ -1,8 +1,9 @@
-import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=desktop-plan-1';
+import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=phone-live-1';
 import {cockpitUrl} from './navigation.mjs';
 import { chartData, describeError } from './recordings.mjs';
 import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs?v=fixed-sections';
-import { createLiveView } from './live-view.mjs';
+import { createLiveView } from './live-view.mjs?v=phone-pc-1';
+import { buildSlopeSeries } from '/measurement-series.js?v=slope-1';
 import { mountFactoryPlan } from './fabrikplan/karte.mjs';
 import { createSensorDemo, recordingSection } from './fabrikplan/sensor-demo.mjs';
 
@@ -22,7 +23,7 @@ let activeDataset = DEMO_DATASETS[0];
 let openedAt = clock();
 let pausedAt = null;
 let voiceEnabled = false;
-let activeLive = false;
+let activeLive = true;
 let backendPort = 8000;
 let liveStatus = {label: 'Verbinde mit dem Messserver …', state: 'loading'};
 let wasSensorPlaying = false;
@@ -300,7 +301,12 @@ function paintChart(canvas, plot, recording, scale, { limits, monitorGrid = fals
 }
 
 const liveView = createLiveView({
-  paintChart,
+  paintChart, buildSlopeSeries,
+  openStream() {
+    const url = new URL('/ws/stream', location.href);
+    url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return new WebSocket(url);
+  },
   speakStatus: (message) => { if (voiceEnabled) speak(message); },
   translate: tr, locale: getLocale,
   onStatus: status => { liveStatus = status; updateCompactStatus(); },
@@ -384,7 +390,7 @@ byId('open-help').addEventListener('click', () => byId('help-dialog').showModal(
 byId('connection-help').addEventListener('click', () => byId('help-dialog').showModal());
 
 function updateCompactStatus() {
-  byId('compact-source').textContent = tr(activeLive ? 'Live-Daten' : 'Demodaten');
+  byId('compact-source').textContent = tr(activeLive ? liveStatus.sourceLabel || 'PC-Messung' : 'Demodaten');
   const status = activeLive ? liveStatus : sensorDemo.selected
     ? {label: byId('demo-state').textContent, state: byId('demo-state').dataset.state}
     : {label: pausedAt !== null ? 'Anzeige pausiert' : 'Demoanzeige', state: pausedAt !== null ? 'paused' : 'valid'};
@@ -437,7 +443,7 @@ await refreshLanguage();
 
 new ResizeObserver(() => drawChart()).observe(plot);
 window.addEventListener('resize', () => drawChart());
-showDataset();
+if (activeLive) selectView(true);
 clearFactorySelection = mountFactoryPlan(byId('main'), {
   selectSensor(sensor) {
     byId('demo-state').setAttribute('role', 'status');

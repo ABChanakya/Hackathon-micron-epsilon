@@ -45,9 +45,15 @@ Sensor, der Simulator oder eine Aufzeichnung ist. Das Ergebnis steht als `device
 unter `GET /api/device`. Monitor und Handy-Ansicht zeigen ein Gerät nur, wenn es geprüft ist und ein Layout dafür
 existiert (Abstand mit 3D-Sensor und LEDs, oder Temperatur); unbekannte oder widersprüchliche Geräte werden abgewiesen.
 
-Die Handy-Ansicht liegt in `frontend/Handy frontend/`. Am Rechner: http://127.0.0.1:8000/handy/. Auf dem Handy (gleiches
-WLAN): `python3 "frontend/Handy frontend/serve.py"` und die Adresse aus dem README dort öffnen. Der Handy-Server leitet
-nur `/api/status`, `/api/latest` und `/api/device` lesend an den Messserver weiter.
+Beim Start mit `./start.sh` erscheint im Terminal **Handy im gleichen WLAN** mit der aktuellen Adresse.
+Im Desktop-Cockpit findest du den Link unter **Einstellungen → Verbindung → Auf dem Handy öffnen**.
+Verbinde das Handy mit demselben WLAN wie den Sensor-PC und öffne die Adresse im Handy-Browser.
+**PC-Messung** startet automatisch und zeigt den Messdatenstrom des am PC aktiven Sensors. Am PC ist die mobile Ansicht auch unter
+http://127.0.0.1:8000/handy/ erreichbar.
+
+Läuft der Messserver bereits einzeln, starte zusätzlich `python3 "frontend/Handy frontend/serve.py"`.
+Für einen anderen Messserver-Port ergänze beispielsweise `--backend-port 8001`. Der Handy-Server stellt
+den Datenstrom und die Lesezugriffe auf Sensorstatus, Gerät und letzten Messwert bereit.
 
 ## KI-Anomalieerkennung
 

@@ -31,7 +31,7 @@ test('the classic bootstrap follows deferred jsPDF and replaces the direct modul
  const scripts=[...index.matchAll(/<script\b([^>]*)>/g)].map(match=>match[1]);
  assert.equal(scripts.length,2);
  assert.match(scripts[0],/src="vendor\/jspdf\.umd\.min\.js"/);assert.match(scripts[0],/\bdefer\b/);
- assert.match(scripts[1],/src="bootstrap\.js\?v=sensor-video-desktop-plan-1"/);assert.match(scripts[1],/\bdefer\b/);
+ assert.match(scripts[1],/src="bootstrap\.js\?v=phone-live-1"/);assert.match(scripts[1],/\bdefer\b/);
  assert.doesNotMatch(scripts[1],/type="module"/);assert.doesNotMatch(index,/<script[^>]*src="app\.js/);
 });
 
@@ -68,7 +68,7 @@ test('HTTP and HTTPS start the one versioned module without replacing the boot p
  for(const protocol of ['http:','https:']){
   const h=harness({protocol});h.run();
   assert.equal(h.head.children.length,1);const entry=h.head.children[0];
-  assert.equal(entry.type,'module');assert.equal(entry.src,'app.js?v=sensor-video-desktop-plan-1');
+  assert.equal(entry.type,'module');assert.equal(entry.src,'app.js?v=phone-live-1');
   assert.equal(h.app.children[0],h.boot);assert.equal(h.find('a'),undefined);
   assert.equal(h.reloads,0);assert.equal(h.writes,0);
  }

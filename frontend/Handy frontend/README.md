@@ -4,20 +4,27 @@ Unter **Demodaten** läuft das Standardprofil „Abstand prüfen“ aus der Desk
 
 ## Auf dem Handy öffnen
 
-Starte im Stammordner des Repositorys den Handy-Server mit Python 3.
+Starte im Stammordner des Repositorys die Messsoftware:
 
 ```sh
-python "frontend/Handy frontend/serve.py"
+./start.sh
 ```
 
-Verbinde das Handy mit demselben WLAN wie den Rechner. Öffne dann [den Messplatz](http://10.19.233.145:4174/) oder scanne den [QR-Code](handy-qr.png). Beides führt direkt zur Messansicht. Bei einer anderen WLAN-Adresse ersetze `10.19.233.145` durch die IPv4-Adresse des Rechners. Unter Windows zeigt sie `ipconfig` beim WLAN-Adapter an. Der mitgelieferte QR-Code verwendet die oben angegebene Adresse.
+Verbinde den Sensor im Desktop-Cockpit. Verbinde das Handy mit demselben WLAN wie den Rechner und öffne die
+Adresse unter **Einstellungen → Verbindung → Auf dem Handy öffnen**. Sie erscheint beim Start auch im
+Terminal unter **Handy im gleichen WLAN**. Im Handy-Browser startet **PC-Messung** automatisch und
+zeigt denselben Messdatenstrom mit Modell, Messwert und Einheit an. Strg+C beendet beide Dienste.
 
-## Echte Live-Daten sehen
+Wenn der Messserver bereits läuft, kannst du die Handy-Freigabe einzeln starten:
 
-1. Starte den vorhandenen Sensorserver am Rechner und verbinde den Sensor über die PC-Ansicht.
-2. Öffne am Handy **Live-Daten**. Der Monitor zeigt den Sensor, den aktuellen Messwert und den Verlauf der letzten 15 Sekunden. Die Verbindung wird automatisch erneut abgefragt, wenn der Server oder der Sensor vorübergehend ausfällt.
+```sh
+python3 "frontend/Handy frontend/serve.py"
+```
 
-Der Handy-Server liest standardmäßig vom Sensorserver auf Port 8000 desselben Rechners. Läuft dieser auf Port 8001, starte den Handy-Server mit `python "frontend/Handy frontend/serve.py" --backend-port 8001`. Die Desktop-Demo funktioniert auch bei rein statischer Bereitstellung dieses Verzeichnisses.
+Der Handy-Server liest den Messserver auf demselben Rechner, standardmäßig auf Port 8000. Für einen anderen
+Messserver verwende beispielsweise `--backend-port 8001`. Der veröffentlichte Handy-Port ist normalerweise
+4174. Ist er belegt, wählt der Server einen freien Port und zeigt die vollständige Adresse an. Mit
+`--port 4180` kannst du den Handy-Port fest vorgeben.
 
 ## Fabrikplan: Plan und Modulansicht
 

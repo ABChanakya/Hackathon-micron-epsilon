@@ -221,7 +221,7 @@ button.primary:hover:not([aria-disabled="true"]) { filter: brightness(.92); }
 
 .detail-header { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: .4rem .9rem; }
 .detail-meta { margin-top: .22rem; color: var(--muted); font-size: .875rem; }
-#chart, #live-chart { margin-block: .75rem; }
+#chart, #live-chart, #live-slope-chart { margin-block: .75rem; }
 .chart-unit, .y-labels, .x-labels { color: var(--muted); font: .875rem/1.35 var(--mono); }
 .chart-unit { margin-bottom: .45rem; }
 
@@ -314,8 +314,11 @@ dialog button { justify-self: start; }
 #demo-reading, #live-reading { font: 600 2.75rem/1.2 var(--mono); letter-spacing: -.055em; }
 #demo-unit, #live-unit { font-size: 1rem; }
 #live-notice { margin-bottom: .6rem; }
-#live-chart[data-historical="true"] .plot { opacity: .7; }
+#live-chart[data-historical="true"] .plot, #live-slope-chart[data-historical="true"] .plot { opacity: .7; }
 #live-history { margin-top: .4rem; }
+#live-source { color: var(--muted); font-size: .875rem; }
+#live-slope-chart { border-top: 1px solid var(--border); padding-top: .8rem; }
+#live-slope-value { font: 600 1rem/1.4 var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
 
 .dataset-picker {
   margin-bottom: .85rem;
@@ -349,7 +352,7 @@ dialog button { justify-self: start; }
   #demo-reading, #live-reading { font-size: 2rem; }
   .live-reading { padding-block: .2rem; }
   .plot { height: max(150px, calc(100dvh - 260px)); }
-  #chart, #live-chart { margin-block: .35rem; }
+  #chart, #live-chart, #live-slope-chart { margin-block: .35rem; }
   #chart-title, #demo-source { display: none; }
   #live-view .detail-header { align-items: center; }
   #live-history { margin-top: .25rem; }
