@@ -1,0 +1,60 @@
+{
+  "file": "rec_20261127_184225.csv",
+  "label": "hand sweep",
+  "notes": "full range sweep, expect errors at both ends",
+  "source": "serial-ild1420",
+  "info": {
+    "model": "ILD1420-50",
+    "serial": "15060171",
+    "range_mm": 50.0,
+    "smr_mm": 35,
+    "firmware": "000.018",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 2.0,
+    "averaging": {
+      "mode": "MEDIAN",
+      "depth": 9
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "order": [
+      "SHUTTER",
+      "COUNTER",
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "INTENSITY1",
+      "DIST1",
+      "STATE"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T18:42:25",
+  "stopped": "2026-11-27T18:42:45",
+  "duration_s": 20.0,
+  "samples": 39999,
+  "valid": 33160,
+  "errors": 6839,
+  "errors_by_code": {
+    "6": 6188,
+    "5": 651
+  },
+  "dropped": 0,
+  "min_mm": -0.48054029304029305,
+  "max_mm": 25.96130952380953,
+  "mean_mm": 12.664985,
+  "planned_duration_s": 20.0
+}

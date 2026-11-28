@@ -66,11 +66,16 @@ export function validateConnectionSettings(values) {
   return { errors: {}, value: { bridgeUrl } };
 }
 
-// Mirrors backend/anomaly.py LIMITS; the backend still validates every submitted configuration.
-export const ML_FIELD_LIMITS = Object.freeze({ sensitivity: [1.5, 100], consecutive: [1, 50], window_s: [.1, 10], warmup_s: [1, 600], cooldown_s: [0, 600], match_radius: [.1, 50], error_fraction: [1, 100] });
+// Mirrors numeric constraints in backend/anomaly.py; the backend still validates every submitted configuration.
+export const ML_FIELD_LIMITS = Object.freeze({ sensitivity: [1.5, 100], consecutive: [1, 50], window_s: [.1, 10], warmup_s: [1, 600], cooldown_s: [0, 600], match_radius: [.1, 50], error_fraction: [1, 100], label_match_radius: [.5, 500] });
 export function validateMlSettings(values) {
   const errors = {}, value = { enabled: Boolean(values.enabled), learn_online: Boolean(values.learn_online) };
+  if (Object.hasOwn(values, 'label_match')) value.label_match = Boolean(values.label_match);
   for (const [key, [min, max]] of Object.entries(ML_FIELD_LIMITS)) {
+    if (key === 'label_match_radius') {
+      if (!Object.hasOwn(values, key)) continue;
+      if (String(values[key] ?? '').trim() === '') { value[key] = null; continue; }
+    }
     const n = number(values[key]);
     if (!Number.isFinite(n) || n < min || n > max || key === 'consecutive' && !Number.isInteger(n)) errors[key] = key === 'consecutive' ? 'Bitte gib eine ganze Zahl im angegebenen Bereich ein.' : 'Bitte gib eine Zahl im angegebenen Bereich ein.';
     value[key] = key === 'error_fraction' ? n / 100 : n;

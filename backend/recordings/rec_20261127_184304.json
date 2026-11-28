@@ -1,0 +1,59 @@
+{
+  "file": "rec_20261127_184304.csv",
+  "label": "white paper",
+  "notes": "bright diffuse surface",
+  "source": "serial-ild1420",
+  "info": {
+    "model": "ILD1420-50",
+    "serial": "15060171",
+    "range_mm": 50.0,
+    "smr_mm": 35,
+    "firmware": "000.018",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 2.0,
+    "averaging": {
+      "mode": "MEDIAN",
+      "depth": 9
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "order": [
+      "SHUTTER",
+      "COUNTER",
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "INTENSITY1",
+      "DIST1",
+      "STATE"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T18:43:04",
+  "stopped": "2026-11-27T18:43:14",
+  "duration_s": 10.005,
+  "samples": 20011,
+  "valid": 20000,
+  "errors": 11,
+  "errors_by_code": {
+    "6": 11
+  },
+  "dropped": 0,
+  "min_mm": 3.6822802197802202,
+  "max_mm": 34.04565018315019,
+  "mean_mm": 21.64069,
+  "planned_duration_s": 10.0
+}

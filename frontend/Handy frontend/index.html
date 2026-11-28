@@ -7,7 +7,8 @@
   <title>Sensor Cockpit · Micro-Epsilon</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css?v=ui-review-3">
-  <script type="module" src="app.mjs?v=ui-review-3"></script>
+  <link rel="stylesheet" href="fabrikplan/fabrikplan.css?v=grid-2">
+  <script type="module" src="app.mjs?v=ui-review-factory-1"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Zum Inhalt</a>
@@ -44,9 +45,10 @@
 
       <section class="detail-panel" aria-labelledby="demo-title">
         <header class="detail-header">
-          <h2 id="demo-title">Abstand zum Objekt</h2>
+          <h2 id="demo-title" tabindex="-1">Abstand zum Objekt</h2>
           <span class="status" id="demo-state" data-state="valid">Demoanzeige</span>
         </header>
+        <p class="detail-meta" id="sensor-location" hidden></p>
         <div class="live-reading">
           <span id="demo-reading">—</span><span class="reading-unit" id="demo-unit">mm</span>
         </div>
@@ -56,12 +58,14 @@
           <svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="resume-icon" hidden><path d="m7 4 13 8-13 8z"/></svg>
           <span id="demo-pause-label">Anzeige pausieren</span>
         </button>
+        <button type="button" id="sensor-restart" hidden>Neustart</button>
 
         <figure id="chart" aria-labelledby="chart-title">
           <h2 id="chart-title">Messverlauf</h2>
           <figcaption>
             <span class="legend-item"><span class="legend-trace" aria-hidden="true"></span>Abstand (mm)</span>
-            <span class="legend-item"><span class="legend-limit" aria-hidden="true"></span>Sollgrenzen</span>
+            <span class="legend-item" id="demo-limits"><span class="legend-limit" aria-hidden="true"></span>Sollgrenzen</span>
+            <span class="legend-item" id="demo-gaps" hidden><span class="legend-gap" aria-hidden="true"></span>Messlücke</span>
           </figcaption>
           <div class="chart-frame">
             <div class="y-labels" id="y-labels" aria-hidden="true">
@@ -74,6 +78,7 @@
               <span id="chart-start">00:00</span><span id="chart-mid">00:15</span><span id="chart-end">00:30</span>
             </div>
           </div>
+          <p class="detail-meta" hidden id="sensor-period"></p>
           <p class="detail-meta" id="demo-source"></p>
         </figure>
       </section>

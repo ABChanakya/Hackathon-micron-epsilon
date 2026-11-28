@@ -49,6 +49,8 @@ function harness() {
     adoptSensor: engine.adoptSensor,
     profile: () => context.state.profiles.find(p => p.id === context.state.activeProfileId) || context.state.profiles[0],
     persist() { events.push({ type: 'persist', profileUnit: context.state.profiles[0].unit }); },
+    reportIncident() {},
+    resolveIncident(key) { rt.activeErrorKeys?.delete(key); },
     $: () => null,
     setTimeout: () => 1,
     clearTimeout() {},

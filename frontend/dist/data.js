@@ -260,6 +260,57 @@ export function acceptFeedback(profile, value, accepted, note = '', t = 0) {
   return { profile: next, event };
 }
 
+// "Fine" for a whole stretch: widen the evaluation limits to the lowest and highest value of the window the person
+// looked at (suggestion: { value, lo, hi, seconds }), not only to the single value that triggered the question.
+export function acceptRange(profile, suggestion, note = '', t = 0) {
+  const { value, lo, hi, seconds } = suggestion ?? {};
+  const low = finite(lo) ? lo : value, high = finite(hi) ? hi : value;
+  if (!finite(low) || !finite(high)) throw new Error('Der Messwert ist ungültig.');
+  const next = clone(profile);
+  const previousLower = next.learnedLower ?? next.lower;
+  const previousUpper = next.learnedUpper ?? next.upper;
+  const margin = SENSOR.kind === 'temperature' ? 0.05 : 0.005;
+  if (next.learning) {
+    next.learnedLower = round(Math.max(SENSOR.rangeStart, Math.min(previousLower, low - margin)));
+    next.learnedUpper = round(Math.min(SENSOR.rangeEnd, Math.max(previousUpper, high + margin)));
+  } else {
+    next.learnedLower = previousLower;
+    next.learnedUpper = previousUpper;
+  }
+  const changed = next.learnedLower !== previousLower || next.learnedUpper !== previousUpper;
+  if (changed) next.version += 1;
+  const event = {
+    id: generateId('feedback'), type: 'feedback', t, value: finite(value) ? value : high, accepted: true, note: String(note),
+    at: new Date().toISOString(), version: next.version, previousLower, previousUpper,
+    nextLower: next.learnedLower, nextUpper: next.learnedUpper, changed, range: [low, high], seconds: seconds ?? null,
+    reason: next.learning ? 'Tiefster und höchster Wert des Zeitraums als akzeptabel bewertet.' : 'Bewertung gespeichert; Lernen ist pausiert.',
+  };
+  next.history = [...(next.history ?? []), clone(event)];
+  return { profile: next, event };
+}
+
+// The evaluation limits follow the training data: widen them to the range of everything labeled normal (never narrower).
+// The limits change to fit the data, not the other way round.
+export function fitToTraining(profile, lo, hi) {
+  if (!finite(lo) || !finite(hi) || lo > hi) return null;
+  const next = clone(profile);
+  if (!next.learning) return null;
+  const previousLower = next.learnedLower ?? next.lower;
+  const previousUpper = next.learnedUpper ?? next.upper;
+  const margin = SENSOR.kind === 'temperature' ? 0.05 : 0.005;
+  next.learnedLower = round(Math.max(SENSOR.rangeStart, Math.min(previousLower, lo - margin)));
+  next.learnedUpper = round(Math.min(SENSOR.rangeEnd, Math.max(previousUpper, hi + margin)));
+  if (next.learnedLower === previousLower && next.learnedUpper === previousUpper) return null;
+  next.version += 1;
+  const event = {
+    id: generateId('training'), type: 'training', at: new Date().toISOString(), version: next.version, changed: true,
+    previousLower, previousUpper, nextLower: next.learnedLower, nextUpper: next.learnedUpper, range: [lo, hi],
+    reason: 'Auswertungsgrenzen an die Trainingsdaten angepasst.',
+  };
+  next.history = [...(next.history ?? []), clone(event)];
+  return { profile: next, event };
+}
+
 function adjustmentEvent(profile, type, lower, upper, reason, targetId) {
   const next = clone(profile);
   const previousLower = next.learnedLower ?? next.lower;
@@ -282,7 +333,7 @@ export function undoLearning(profile) {
   const baseline = history.findLastIndex(item => item.type === 'profile');
   const current = history.slice(baseline + 1);
   const reverted = new Set(current.filter(item => item.type === 'undo').map(item => item.targetId));
-  const last = [...current].reverse().find(item => item.changed && ['feedback', 'reset'].includes(item.type) && !reverted.has(item.id));
+  const last = [...current].reverse().find(item => item.changed && ['feedback', 'reset', 'training'].includes(item.type) && !reverted.has(item.id));
   if (!last) return clone(profile);
   return adjustmentEvent(profile, 'undo', last.previousLower, last.previousUpper, 'Letzte Lernanpassung rückgängig gemacht.', last.id);
 }

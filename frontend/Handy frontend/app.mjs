@@ -1,8 +1,10 @@
 import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=ui-review-3';
 import {cockpitUrl} from './navigation.mjs';
-import { chartData } from './recordings.mjs';
-import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs';
+import { chartData, describeError } from './recordings.mjs';
+import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs?v=fixed-sections';
 import { createLiveView } from './live-view.mjs';
+import { mountFactoryPlan } from './fabrikplan/karte.mjs';
+import { createSensorDemo, recordingSection } from './fabrikplan/sensor-demo.mjs';
 
 const byId = (id) => document.getElementById(id);
 const root = document.documentElement;
@@ -12,6 +14,7 @@ const axisLabels = [...byId('y-labels').children];
 const picker = byId('dataset');
 const number = {format: value => new Intl.NumberFormat(getLocale(), {minimumFractionDigits: 3, maximumFractionDigits: 3}).format(value)};
 const tr = (text, values = {}) => translateText(text).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? '{' + key + '}');
+const sectionTime = {format: value => new Intl.NumberFormat(getLocale(), {maximumFractionDigits: 3}).format(value)};
 const clock = () => performance.now() / 1_000;
 const speechSupported = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 
@@ -22,6 +25,11 @@ let voiceEnabled = false;
 let activeLive = false;
 let backendPort = 8000;
 let liveStatus = {label: 'Verbinde mit dem Messserver …', state: 'loading'};
+let wasSensorPlaying = false;
+let clearFactorySelection = () => {};
+const sensorDemo = createSensorDemo({ clock, onChange: drawChart });
+const sensorOption = new Option('', 'factory-sensor');
+const initialTraceLabel = canvas.getAttribute('aria-label');
 
 function formatTime(seconds) {
   const whole = Math.floor(seconds);
@@ -39,8 +47,12 @@ function speak(text) {
 
 function drawChart() {
   if (byId('recorded-view').hidden) return;
-  const elapsed = pausedAt ?? clock() - openedAt;
-  const window = demoWindow(activeDataset, elapsed);
+  const profile = sensorDemo.profileFrame();
+  if (sensorDemo.selected && !profile) { drawSensor(); return; }
+  const dataset = sensorDemo.selected?.dataset ?? activeDataset;
+  const elapsed = profile?.elapsed ?? (pausedAt ?? clock() - openedAt);
+  const window = demoWindow(dataset, elapsed, { fixedSections: Boolean(profile) });
+  if (profile) showSensorProfile(window, profile);
   const pad = Math.max((window.max - window.min) * .3, .012);
   const scale = { low: window.min - pad, high: window.max + pad };
   axisLabels.forEach((label, index) => {
@@ -50,10 +62,91 @@ function drawChart() {
   byId('chart-mid').textContent = formatTime(window.start + window.duration / 2);
   byId('chart-end').textContent = formatTime(window.start + window.duration);
   byId('demo-reading').textContent = number.format(window.samples.at(-1).value);
-  paintChart(canvas, plot, window, scale, activeDataset);
+  paintChart(canvas, plot, window, scale, { limits: dataset, monitorGrid: true });
+}
+
+function showSensorProfile(window, profile) {
+  byId('demo-pause').hidden = false;
+  byId('sensor-restart').hidden = false;
+  byId('chart').hidden = false;
+  byId('demo-limits').hidden = false;
+  byId('demo-gaps').hidden = true;
+  const range = window.start + '–' + (window.start + window.duration) + ' s';
+  const period = byId('sensor-period');
+  period.hidden = false;
+  if (period.textContent !== range) period.textContent = range;
+  const source = [tr('Demo-Wiedergabe'), tr('Abstand prüfen'), tr('{rate} simulierte Messwerte pro Sekunde', {rate: DEMO_RATE})].join(' · ');
+  if (byId('demo-source').textContent !== source) byId('demo-source').textContent = source;
+  const label = 'Demo-Wiedergabe des Abstands in Millimetern, ' + range;
+  if (canvas.getAttribute('aria-label') !== label) canvas.setAttribute('aria-label', label);
+  updatePauseButton(profile);
+}
+
+function drawSensor() {
+  const { status, statusType, source } = sensorDemo.selected;
+  const frame = sensorDemo.frame();
+  wasSensorPlaying = frame?.playing ?? false;
+  const badge = byId('demo-state');
+  let badgeText = tr(status);
+  let badgeState = statusType;
+  if (frame?.ended) { badgeText = tr('Wiedergabe beendet'); badgeState = ''; }
+  else if (frame?.sample.value === null) { badgeText = tr('Messlücke') + ' · ' + tr(describeError(frame.sample.code)); badgeState = 'invalid'; }
+  else if (frame?.playing) { badgeText = tr('Wiedergabe läuft'); badgeState = 'valid'; }
+  else if (frame) { badgeText = tr('Wiedergabe pausiert'); badgeState = 'paused'; }
+  if (badge.textContent !== badgeText) badge.textContent = badgeText;
+  badge.dataset.state = badgeState;
+  updateCompactStatus();
+
+  byId('demo-pause').hidden = !frame;
+  byId('sensor-restart').hidden = !frame;
+  byId('chart').hidden = !frame;
+  byId('demo-reading').textContent = frame && frame.sample.value !== null ? number.format(frame.sample.value) : '—';
+  if (!frame) return;
+
+  byId('demo-limits').hidden = true;
+  const recording = sensorDemo.recording;
+  byId('demo-gaps').hidden = recording.invalidCount === 0;
+  byId('demo-pause-label').textContent = tr(frame.playing ? 'Anzeige pausieren' : frame.ended ? 'Erneut abspielen' : 'Fortsetzen');
+  byId('pause-icon').toggleAttribute('hidden', !frame.playing);
+  byId('resume-icon').toggleAttribute('hidden', frame.playing);
+
+  const section = recordingSection(recording, frame.time);
+  const range = section.start + '–' + section.end + ' s';
+  const period = byId('sensor-period');
+  period.hidden = false;
+  const startLabel = formatTime(section.start);
+  if (period.textContent !== range || byId('chart-start').textContent !== startLabel) {
+    period.textContent = range;
+    byId('chart-start').textContent = startLabel;
+    byId('chart-mid').textContent = formatTime(section.start + section.duration / 2);
+    byId('chart-end').textContent = formatTime(section.end);
+    canvas.setAttribute('aria-label', 'Wiedergabeverlauf des Abstands in Millimetern, ' + range);
+  }
+  const sourceLabel = recording.duration < section.end
+    ? source + ' · Aufzeichnung bis ' + sectionTime.format(recording.duration) + ' s'
+    : source;
+  if (byId('demo-source').textContent !== sourceLabel) byId('demo-source').textContent = sourceLabel;
+  const min = recording.min ?? 0, max = recording.max ?? 1;
+  const pad = Math.max((max - min) * .3, .012);
+  const scale = { low: min - pad, high: max + pad };
+  axisLabels.forEach((label, index) => {
+    label.textContent = number.format(scale.high - (scale.high - scale.low) * index / 4);
+  });
+  paintChart(canvas, plot, section, scale, { monitorGrid: true });
 }
 
 function showDataset() {
+  wasSensorPlaying = false;
+  byId('demo-title').textContent = tr('Abstand zum Objekt');
+  byId('sensor-location').hidden = true;
+  byId('sensor-period').hidden = true;
+  byId('sensor-restart').hidden = true;
+  byId('demo-pause').hidden = false;
+  byId('demo-limits').hidden = false;
+  byId('demo-gaps').hidden = true;
+  byId('chart').hidden = false;
+  byId('demo-state').removeAttribute('role');
+  canvas.setAttribute('aria-label', tr(initialTraceLabel));
   byId('source-summary').textContent = tr('Demodaten · {model}', {model: activeDataset.model});
   byId('demo-unit').textContent = activeDataset.unit;
   byId('demo-source').textContent = tr('{rate} simulierte Messwerte pro Sekunde', {rate: DEMO_RATE});
@@ -61,37 +154,67 @@ function showDataset() {
   drawChart();
 }
 
-function updatePauseButton() {
-  const paused = pausedAt !== null;
+function showSelectedSensor() {
+  const {sensor, dataset, name} = sensorDemo.selected;
+  sensorOption.textContent = [name, tr(sensor.name)].join(' · ');
+  if (!sensorOption.parentNode) picker.add(sensorOption);
+  picker.value = sensorOption.value;
+  const source = tr(dataset ? 'Demo-Wiedergabe' : sensor.file ? 'Demo-Aufzeichnung' : 'Sensor');
+  byId('source-summary').textContent = source + ' · ' + name;
+  byId('demo-title').textContent = name;
+  const location = byId('sensor-location');
+  location.textContent = [sensor.name, sensor.position, sensor.quantity].map(text => tr(text)).join(' · ');
+  location.hidden = false;
+  byId('demo-unit').textContent = dataset?.unit ?? sensor.unit;
+  drawChart();
+}
+
+function updatePauseButton(profile) {
+  const paused = profile ? !profile.playing : pausedAt !== null;
   byId('demo-pause-label').textContent = tr(paused ? 'Fortsetzen' : 'Anzeige pausieren');
   byId('pause-icon').toggleAttribute('hidden', paused);
   byId('resume-icon').toggleAttribute('hidden', !paused);
-  byId('demo-state').textContent = tr(paused ? 'Demo · Anzeige pausiert' : 'Demoanzeige');
-  byId('demo-state').dataset.state = paused ? 'paused' : 'valid';
+  const state = byId('demo-state');
+  const label = tr(profile ? (paused ? 'Demo-Wiedergabe pausiert' : 'Demo-Wiedergabe')
+    : paused ? 'Demo · Anzeige pausiert' : 'Demoanzeige');
+  if (state.textContent !== label) state.textContent = label;
+  state.dataset.state = paused ? 'paused' : 'valid';
   updateCompactStatus();
 }
 
 for (const dataset of DEMO_DATASETS) picker.add(new Option(dataset.name, dataset.id));
 picker.addEventListener('change', () => {
   const dataset = DEMO_DATASETS.find(({ id }) => id === picker.value);
-  if (!dataset || dataset === activeDataset) return;
-  activeDataset = dataset;
-  openedAt = clock();
-  pausedAt = null;
+  if (!dataset || (dataset === activeDataset && !sensorDemo.selected)) return;
+  sensorDemo.clear();
+  clearFactorySelection();
+  sensorOption.remove();
+  if (dataset !== activeDataset) {
+    activeDataset = dataset;
+    openedAt = clock();
+    pausedAt = null;
+  }
   showDataset();
 });
 
 byId('demo-pause').addEventListener('click', () => {
+  if (sensorDemo.selected) { sensorDemo.toggle(); drawChart(); return; }
   pausedAt = pausedAt === null ? clock() - openedAt : null;
   updatePauseButton();
   drawChart();
 });
+byId('sensor-restart').addEventListener('click', () => {
+  sensorDemo.restart();
+  drawChart();
+});
 
 setInterval(() => {
-  if (pausedAt === null) drawChart();
+  const playing = sensorDemo.profileFrame()?.playing ?? (sensorDemo.selected
+    ? sensorDemo.frame()?.playing || wasSensorPlaying : pausedAt === null);
+  if (playing) drawChart();
 }, 1_000 / DEMO_RATE);
 
-function paintChart(canvas, plot, recording, scale, limits) {
+function paintChart(canvas, plot, recording, scale, { limits, monitorGrid = false } = {}) {
   const { width, height } = plot.getBoundingClientRect();
   if (!width || !height) return;
 
@@ -106,15 +229,19 @@ function paintChart(canvas, plot, recording, scale, limits) {
   const y = (value) => (scale.high - value) / (scale.high - scale.low) * height;
   const { segments, gaps } = chartData(recording, Math.max(1, Math.floor(width)));
 
+  if (monitorGrid && !limits) {
+    context.fillStyle = style.getPropertyValue('--chart-band');
+    context.fillRect(0, 0, width, height);
+  }
   context.strokeStyle = style.getPropertyValue('--grid');
   context.beginPath();
-  const divisions = limits ? 8 : 4;
+  const divisions = monitorGrid ? 8 : 4;
   for (let index = 0; index <= divisions; index++) {
     const fraction = index / divisions;
     context.moveTo(fraction * width, 0);
     context.lineTo(fraction * width, height);
   }
-  const levels = limits ? [.5, height / 4, height / 2, height * .75, height - .5]
+  const levels = monitorGrid ? [.5, height / 4, height / 2, height * .75, height - .5]
     : [.5, height / 2, height - .5];
   for (const level of levels) {
     context.moveTo(0, level);
@@ -157,7 +284,7 @@ function paintChart(canvas, plot, recording, scale, limits) {
 
   context.strokeStyle = style.getPropertyValue('--accent');
   context.fillStyle = context.strokeStyle;
-  context.lineWidth = limits ? 1.65 : 1.35;
+  context.lineWidth = monitorGrid ? 1.65 : 1.35;
   context.lineJoin = 'round';
   context.beginPath();
   for (const segment of segments) {
@@ -187,7 +314,10 @@ function selectView(live) {
   byId('recorded-view').hidden = live;
   byId('source-summary').hidden = live;
   byId('live-view').hidden = !live;
-  if (live) liveView.start();
+  if (live) {
+    sensorDemo.pause();
+    liveView.start();
+  }
   else {
     liveView.stop();
     drawChart();
@@ -255,7 +385,9 @@ byId('connection-help').addEventListener('click', () => byId('help-dialog').show
 
 function updateCompactStatus() {
   byId('compact-source').textContent = tr(activeLive ? 'Live-Daten' : 'Demodaten');
-  const status = activeLive ? liveStatus : {label: pausedAt !== null ? 'Anzeige pausiert' : 'Demoanzeige', state: pausedAt !== null ? 'paused' : 'valid'};
+  const status = activeLive ? liveStatus : sensorDemo.selected
+    ? {label: byId('demo-state').textContent, state: byId('demo-state').dataset.state}
+    : {label: pausedAt !== null ? 'Anzeige pausiert' : 'Demoanzeige', state: pausedAt !== null ? 'paused' : 'valid'};
   byId('compact-state').textContent = tr(status.label);
   byId('compact-state').dataset.state = status.state;
 }
@@ -269,7 +401,8 @@ async function refreshLanguage() {
   await setLanguage(getLanguage());
   byId('language-select').value = getLanguage();
   for (const [index, dataset] of DEMO_DATASETS.entries()) picker.options[index].textContent = tr(dataset.name);
-  showDataset();
+  if (sensorDemo.selected) showSelectedSensor();
+  else showDataset();
   liveView.refreshLanguage();
   updateCompactStatus();
   updateCockpitLinks();
@@ -305,3 +438,15 @@ await refreshLanguage();
 new ResizeObserver(() => drawChart()).observe(plot);
 window.addEventListener('resize', () => drawChart());
 showDataset();
+clearFactorySelection = mountFactoryPlan(byId('main'), {
+  selectSensor(sensor) {
+    byId('demo-state').setAttribute('role', 'status');
+    const dataset = DEMO_DATASETS.find(({ id }) => id === sensor.demoId);
+    sensorDemo.open(sensor, dataset);
+    showSelectedSensor();
+    const title = byId('demo-title');
+    selectView(false);
+    title.focus({ preventScroll: true });
+    byId('recorded-view').scrollIntoView({ block: 'start' });
+  },
+});

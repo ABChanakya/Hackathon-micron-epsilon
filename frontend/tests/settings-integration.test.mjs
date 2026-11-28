@@ -8,7 +8,7 @@ const source=await readFile(new URL('../dist/app.js',import.meta.url),'utf8');
 const views=source.slice(0,source.indexOf("document.addEventListener('click'")).replace(/^import .*;\n/gm,'');
 function form(values,key='profile-editor'){
  const error={textContent:''};
- const elements=Object.entries(values).map(([name,value])=>({name,value,type:'text'}));
+ const elements=Object.entries(values).map(([name,value])=>({name,value,type:typeof value==='boolean'?'checkbox':'text',checked:typeof value==='boolean'?value:undefined}));
  elements.namedItem=name=>elements.find(input=>input.name===name);
  return {elements,dataset:{settingsKey:key},error,querySelectorAll:()=>[],querySelector:()=>error};
 }
@@ -66,4 +66,42 @@ test('ML reset and its asynchronous status refresh keep the settings route and h
  h.run('requestMlReset(true)');await h.context.confirmation.onConfirm();
  assert.equal(h.run('rt.route'),'advanced');assert.equal(h.run('location.hash'),'#advanced');
  assert.deepEqual(calls,['/api/ml/reset','/api/ml','/api/recordings','/api/ml/errors?limit=5']);
+});
+const mlConfig={enabled:true,learn_online:true,label_match:true,label_match_radius:null,sensitivity:6,consecutive:2,window_s:.5,warmup_s:10,cooldown_s:5,match_radius:3,error_fraction:.5,reject_z:null,hard_min:null,hard_max:null,error_file:'ml/errors.jsonl'};
+test('ML panel presents unknown-data controls and calibrated training statistics without replacing settings drafts',()=>{
+ const h=harness();h.context.config=mlConfig;
+ h.run("rt.mlStatus={config,model:'sensor-1',sensor:'ILD1900',state:'watching',baseline_windows:7,normal_examples:3,anomaly_examples:1,labeled_windows:42,labeled_sources:['A','B'],match_radius:2.75,train_range:[24.9,25.1]}");
+ const html=h.run('mlPanel()');
+ assert.match(html,/name="label_match" checked/);
+ assert.match(html,/name="label_match_radius"[^>]*min="0.5" max="500"/);
+ assert.match(html,/42 Fenster aus 2 Quellen/);assert.match(html,/2,75 \(aus den Daten berechnet\)/);
+ assert.match(html,/24,900–25,100 mm/);
+ assert.match(html,/Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern/);
+ assert.doesNotMatch(html,/verändern keine Soll- oder Auswertungsgrenzen/);
+ h.run("settingsStore().set(settingsKey('ml'),{...mlSettingsValues(config),label_match:false,label_match_radius:'12,5'});mlPanel()");
+ assert.equal(h.run("settingsStore().value(settingsKey('ml')).label_match"),false);
+ assert.equal(h.run("settingsStore().value(settingsKey('ml')).label_match_radius"),'12,5');
+ h.run("settingsStore().discard(settingsKey('ml'))");
+ assert.equal(h.run("settingsStore().value(settingsKey('ml')).label_match"),true);
+ assert.equal(h.run("settingsStore().value(settingsKey('ml')).label_match_radius"),'');
+});
+test('new label-matching settings survive a failed save and submit explicit booleans and numeric radius',async()=>{
+ const h=harness(),requests=[];h.context.config=mlConfig;
+ h.run("rt.mlStatus={config,model:'sensor-1'};settingsStore().ensure(settingsKey('ml'),mlSettingsValues(config))");
+ const key=h.run("settingsKey('ml')"),values={...settings.mlSettingsValues(mlConfig),label_match:false,label_match_radius:'12,5'};
+ h.context.form=form(values,key);h.context.request=async(path,options)=>{requests.push({path,body:JSON.parse(options.body)});if(h.context.fail)throw Error('offline')};h.context.fail=true;
+ h.run("backendRequest=request;loadMl=async()=>{};captureSettingsDrafts=()=>{};restoreSettingsDrafts=()=>{};showSettingsErrors=(form,errors)=>Object.keys(errors).length===0;showSettingsFailure=()=>{};settingsStore().set(settingsKey('ml'),readSettingsForm(form))");
+ await h.run('saveMlSettings(form)');
+ assert.equal(h.run("settingsStore().value(settingsKey('ml')).label_match"),false);
+ assert.equal(h.run("settingsStore().value(settingsKey('ml')).label_match_radius"),'12,5');
+ assert.equal(h.run('rt.mlStatus.config.label_match'),true);assert.equal(h.run('rt.mlStatus.config.label_match_radius'),null);
+ h.context.fail=false;await h.run('saveMlSettings(form)');
+ assert.equal(requests.length,2);assert.equal(requests[1].path,'/api/ml/config');
+ assert.equal(requests[1].body.label_match,false);assert.equal(requests[1].body.label_match_radius,12.5);
+ assert.equal(h.run("settingsStore().dirty(settingsKey('ml'))"),false);
+});
+test('profile history identifies ranges fitted to training data',()=>{
+ const h=harness();h.context.LANGUAGES=[{code:'de',name:'Deutsch'}];h.context.document={documentElement:{dataset:{theme:'light'}},querySelector:()=>null,querySelectorAll:()=>[]};
+ h.run("liveConnectionPanel=()=>'';mlPanel=()=>'';profile().history=[{type:'training',at:Date.now(),changed:true,previousLower:24.9,previousUpper:25.1,nextLower:24.8,nextUpper:25.2}]");
+ const html=h.run('advancedView()');assert.match(html,/An Trainingsdaten angepasst/);assert.doesNotMatch(html,/Grenzen zurückgesetzt/);
 });

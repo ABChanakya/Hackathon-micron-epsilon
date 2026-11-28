@@ -59,6 +59,7 @@ class RecReq(BaseModel):
     label: str = ""
     notes: str = ""
     duration_s: float | None = None      # stop automatically after this many seconds
+    cls: str = ""                        # "normal" | "anomaly": labeled training data, learned by the anomaly agent on stop
 
 
 class CmdReq(BaseModel):
@@ -161,7 +162,7 @@ async def tare(body: dict):
 @app.post("/api/record/start")
 async def rec_start(r: RecReq | None = None):
     r = r or RecReq()
-    return await _do("_start_rec", r.label, r.notes, r.duration_s)
+    return await _do("_start_rec", r.label, r.notes, r.duration_s, r.cls)
 
 
 @app.post("/api/record/stop")
@@ -238,6 +239,7 @@ def delete_recording(name: str):
 class LabelReq(BaseModel):
     label: str                     # normal ("in Ordnung") | anomaly ("nicht in Ordnung")
     note: str = ""
+    learn_s: float | None = None   # "normal": also learn the last N seconds (the window the person saw) as normal
 
 
 @app.get("/api/ml")
@@ -265,7 +267,25 @@ def ml_events(status: str | None = None, limit: int = 50):
 
 @app.post("/api/ml/events/{event_id}/label")
 async def ml_label(event_id: str, r: LabelReq):
-    return await _do("_ml_label", event_id, r.label, r.note)
+    if r.learn_s is not None and not 1 <= r.learn_s <= 900:
+        raise HTTPException(400, "learn_s must be between 1 and 900")
+    return await _do("_ml_label", event_id, r.label, r.note, r.learn_s)
+
+
+@app.get("/api/ml/suggest")
+def ml_suggest(seconds: float = 30):
+    """Lowest and highest value of the last `seconds` (as the monitor shows them): what "fine" would confirm as the
+    new evaluation limits. null while nothing was measured yet."""
+    return hub.ml.suggest(min(max(seconds, 1), 900))
+
+
+@app.post("/api/ml/learn_recent")
+def ml_learn_recent(body: dict):
+    """Learn the last N seconds as normal without an event (used when a limit deviation is accepted)."""
+    seconds = float(body.get("seconds", 30))
+    if not 1 <= seconds <= 900:
+        raise HTTPException(400, "seconds must be between 1 and 900")
+    return hub.ml.learn_recent(seconds, str(body.get("note", "")))
 
 
 @app.post("/api/ml/reset")
@@ -292,7 +312,8 @@ async def ml_learn(body: dict):
     feats = await asyncio.to_thread(anomaly.features_from_csv, path, hub.ml.cfg["window_s"])
     if not feats:
         raise HTTPException(400, "the recording has no usable windows")
-    return await _do("_ml_learn", meta.get("info") or {}, feats, label, meta.get("label") or os.path.basename(path))
+    value_range = await asyncio.to_thread(anomaly.csv_range, path)
+    return await _do("_ml_learn", meta.get("info") or {}, feats, label, meta.get("label") or os.path.basename(path), value_range)
 
 
 @app.get("/api/ml/errors")

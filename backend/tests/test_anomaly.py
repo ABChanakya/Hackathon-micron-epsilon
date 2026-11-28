@@ -11,11 +11,11 @@ class Feeder:
     def __init__(self, agent):
         self.agent, self.t, self.rng = agent, 0.0, random.Random(7)
 
-    def run(self, seconds, level=5.0, noise=0.002, invalid=False, dropped=0):
+    def run(self, seconds, level=5.0, noise=0.002, invalid=False, dropped=0, intensity=None):
         for _ in range(int(seconds * RATE)):
             self.t += 1 / RATE
             v = None if invalid else level + self.rng.gauss(0, noise)
-            self.agent.feed(self.t, v, {}, dropped, 1.8e9)
+            self.agent.feed(self.t, v, {} if intensity is None else {"intensity_pct": intensity + self.rng.gauss(0, 0.3)}, dropped, 1.8e9)
 
 
 class AnomalyAgentTest(unittest.TestCase):
@@ -60,6 +60,40 @@ class AnomalyAgentTest(unittest.TestCase):
         self.assertTrue(known)
         self.assertEqual(known[-1]["status"], "anomaly")
         self.assertEqual(known[-1]["label_note"], "part missing")
+
+    def test_fine_confirms_the_whole_window_and_suggests_its_peaks(self):
+        clock = {"t": 1.8e9}
+        anomaly.time = type("T", (), {"time": staticmethod(lambda: clock["t"])})   # grace/cooldown follow the signal, not the wall clock
+        try:
+            f = self.feed
+            f.run(6)
+            for amp in (0.30, 0.35):                         # a typical dip, flagged the first time
+                f.run(1.5, level=5.0 - amp); f.run(3)
+            pend = self.pending()
+            self.assertTrue(pend)
+            self.agent.label(pend[-1]["id"], "normal", "typisch", 30)
+            sug = self.agent.suggest(30)
+            self.assertAlmostEqual(sug["hi"], 5.0, delta=0.02)          # the highest value of the stretch
+            self.assertAlmostEqual(sug["lo"], 4.65, delta=0.02)         # the lowest: the deepest dip seen
+            clock["t"] += 60                                  # the grace period is long over
+            for amp in (0.32, 0.33, 0.31):                    # similar dips of other depths: no longer flagged
+                f.run(1.5, level=5.0 - amp); f.run(3)
+            self.assertEqual(self.pending(), [])
+            f.run(1.5, level=3.0)                             # a dip far beyond what was confirmed is still flagged
+            f.run(1)
+            self.assertTrue(self.pending())
+        finally:
+            import time
+            anomaly.time = time
+
+    def test_an_unanswered_flag_expires_when_a_newer_one_comes(self):
+        self.feed.run(6)
+        self.feed.run(2, noise=0.05); self.feed.run(3)
+        first = self.pending()[-1]["id"]
+        self.feed.run(2, level=7.0); self.feed.run(3)
+        status = {e["id"]: e["status"] for e in self.agent.events}
+        self.assertEqual(status[first], "expired")
+        self.assertEqual(len(self.pending()), 1)
 
     def test_taught_anomaly_is_recognised_even_when_not_unusual(self):
         # normal: two materials (levels 4 and 6, intensity 30-45); anomaly: a dark material at level 5, intensity 20
@@ -112,6 +146,64 @@ class AnomalyAgentTest(unittest.TestCase):
         again.start(INFO, "sim")
         self.assertTrue(again._ready())
         self.assertEqual(again.frame()["state"], "watching")
+
+    def _labeled_recording(self, level, intensity, n=40, label="normal"):
+        rng = random.Random(int(level * 100))
+        feats = [{"mean": level + rng.gauss(0, 0.01), "std": 0.002, "p2p": 0.0115, "slope": 0.0005, "jitter": 0.0029,
+                  "err_frac": 0.0, "intensity": intensity + rng.gauss(0, 0.3)} for _ in range(n)]
+        return feats, (level - 0.05, level + 0.05)
+
+    def test_labeled_recordings_set_the_limits_and_the_matching_radius_from_the_data(self):
+        for name, level, inten in (("white", 4.0, 27), ("paper", 5.5, 45), ("grey", 3.0, 44)):
+            feats, rng_ = self._labeled_recording(level, inten)
+            self.agent.learn_windows(feats, "normal", name, rng_)
+        st = self.agent.status()
+        self.assertEqual(st["labeled_windows"], 120)
+        lo, hi = self.agent.train_range
+        self.assertAlmostEqual(lo, 2.95 + self.agent.offset, places=3)      # the limits follow the training data ...
+        self.assertAlmostEqual(hi, 5.55 + self.agent.offset, places=3)
+        self.assertIsNotNone(st["auto_radius"], "... and so does the matching radius")
+        self.assertGreaterEqual(st["auto_radius"], 2.0)
+        self.agent.set_config({"label_match_radius": 7})
+        self.assertEqual(self.agent.status()["match_radius"], 7.0, "a fixed value overrides the calibration")
+        self.agent.set_config({"label_match_radius": None})
+        self.assertEqual(self.agent.status()["match_radius"], st["auto_radius"])
+
+    def test_data_that_matches_no_labeled_data_asks_a_person_and_the_answer_becomes_labeled_data(self):
+        for name, level, inten in (("white", 5.0, 27), ("paper", 5.0, 29), ("grey", 5.0, 31)):
+            feats, rng_ = self._labeled_recording(level, inten)
+            self.agent.learn_windows(feats, "normal", name, rng_)
+        self.agent.set_config({"sensitivity": 100})           # only the match against labeled data decides here
+        f = self.feed
+        f.run(2, level=5.0, intensity=27)                     # known: quiet
+        self.assertEqual(self.pending(), [])
+        f.run(3, level=5.0, intensity=8)                      # a surface unlike any labeled recording
+        ev = self.pending()
+        self.assertTrue(ev)
+        self.assertEqual(ev[-1]["reason"], "no_match")
+        self.assertIn(ev[-1]["nearest"]["note"], ("white", "paper", "grey"))
+        self.agent.label(ev[-1]["id"], "normal", "dunkle Folie", 5)
+        self.agent.cfg["cooldown_s"] = 0
+        import time as _t
+        self.agent.grace_until = 0
+        f.run(1, level=5.0, intensity=27); f.run(3, level=5.0, intensity=8)   # the same surface again: now known
+        self.assertEqual([e for e in self.pending() if e["reason"] == "no_match"], [])
+
+    def test_shipped_seed_model_is_loaded_on_a_fresh_machine(self):
+        seed = anomaly.AnomalyAgent(tempfile.mkdtemp(), {**anomaly.DEFAULTS})
+        seed.start({"model": "ILD1900-10", "unit": "mm", "smr_mm": 20}, "serial-ild1900")
+        self.assertTrue(seed._ready(), "trained on the real recordings, no warm-up needed")
+        self.assertGreater(len(seed.anomaly_ex), 0, "black metal is taught as anomaly")
+        self.assertEqual(seed.frame()["state"], "watching")
+
+    def test_label_match_radius_validates_optional_boundaries(self):
+        for value in (0.49, 500.1, float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                anomaly.validate_config({"label_match_radius": value}, anomaly.DEFAULTS)
+        for value in (0.5, 500, None, ""):
+            with self.subTest(value=value):
+                config = anomaly.validate_config({"label_match_radius": value}, anomaly.DEFAULTS)
+                self.assertEqual(config["label_match_radius"], None if value in (None, "") else value)
 
     def test_config_validation(self):
         with self.assertRaises(ValueError):

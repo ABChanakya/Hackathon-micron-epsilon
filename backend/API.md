@@ -50,7 +50,7 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | `POST /api/settings` | any subset of `{rate_khz, averaging, channels}` (`REPLAY`: `{speed, loop}`) | settings | Change settings |
 | `POST /api/tare` | `{"on": true \| false}` | State | Software zero: subtract the current 1 s mean from displayed values. Recordings stay raw |
 | `GET /api/history?seconds=10&bins=300` | – | `[{t, min, max, mean}]` | Recent valid readings, bucketed (prefills the live chart; tare applied) |
-| `POST /api/record/start` | `{label?, notes?, duration_s?}` | State | Start a recording. With `duration_s` it stops by itself |
+| `POST /api/record/start` | `{label?, notes?, duration_s?, cls?}` | State | Start a recording. With `duration_s` it stops by itself. `cls` = `normal` or `anomaly` makes it labeled training data: on stop the anomaly agent learns it (not for replays) |
 | `POST /api/record/stop` | – | State | Stop it and finish the metadata |
 | `GET /api/recordings` | – | `[metadata]` | All recordings, newest first (see "Recordings") |
 | `GET /api/recordings/{file}/series?bins=500&channel=dist_mm` | – | `[{t, min, max, mean}]` | A recording bucketed for a chart. `t` = seconds from its start. `channel` is any numeric CSV column |
@@ -61,7 +61,9 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | `GET /api/ml` | – | ML status | Anomaly agent: state, config, learned baseline, label counts, error file (see "Anomaly agent") |
 | `GET` / `PUT /api/ml/config` | any subset of the config | config | Read or change the agent's parameters (saved in `backend/ml/config.json`) |
 | `GET /api/ml/events?status=pending&limit=50` | – | `[event]` | Flagged and error events, newest first. `status`: `pending`, `normal`, `anomaly`, `error` |
-| `POST /api/ml/events/{id}/label` | `{"label": "normal" \| "anomaly", "note"?}` | event | A person's answer to a flag |
+| `POST /api/ml/events/{id}/label` | `{"label": "normal" \| "anomaly", "note"?, "learn_s"?}` | event | A person's answer to a flag. With `learn_s` (the chart window, 10/30/60) a `normal` answer teaches the whole last stretch as normal, resolves open flags inside it, and returns `suggest` |
+| `GET /api/ml/suggest?seconds=30` | – | `{lo, hi, seconds, windows, unit}` \| null | Lowest and highest value of the last N seconds, as the monitor shows them: what "fine" would confirm as new evaluation limits |
+| `POST /api/ml/learn_recent` | `{"seconds": 30, "note"?}` | `{learned_windows, suggest}` | Learn the last N seconds as normal without an event (a limit deviation was accepted) |
 | `POST /api/ml/reset` | `{"keep_labels": true}` | ML status | Learn the normal state again from the next seconds |
 | `POST /api/ml/learn` | `{"file": "rec_….csv", "label": "normal" \| "anomaly"}` | ML status | Learn a recording of the connected sensor as normal, or as anomaly examples |
 | `GET /api/ml/errors?limit=50` | – | `[error]` | The last lines of the error file, newest first |
@@ -172,6 +174,24 @@ spreads (robust z). Shifts of `mean` and `intensity` count both ways; noise-type
 | flagged | score ≥ `sensitivity` for `consecutive` windows | A `pending` event. A person answers it: `normal` puts it into the normal set (later windows like it are not flagged), `anomaly` into the anomaly set (later windows like it become `anomaly` events with `known: true`, without asking) |
 | error | invalid or lost samples ≥ `error_fraction` of the window, a value beyond `hard_min`/`hard_max`, or score ≥ `reject_z` | Discarded: never learned, and written to `error_file` |
 
+**Labeled data and "no match".** Everything labeled is kept as a library of windows: recordings with `cls` (or learned
+via `/api/ml/learn`) and the person's answers. A window that is close to none of it (nearest labeled window farther than the
+match radius) becomes a flag with `reason: "no_match"` and `nearest: {note, cls, distance}` (the closest known data), and the
+person's answer becomes labeled data too, so the same thing is not asked twice. Distance is measured in the typical spread of a
+feature *inside one recording*. The thresholds come from the training data, not from fixed numbers: the **match radius**
+is calibrated from how far windows of one labeled recording are from the nearest window of another (95th percentile + 25 %;
+`label_match_radius: null` = automatic), and **`train_range`** (lowest to highest value of everything labeled normal, as shown)
+is what the monitor fits its evaluation limits to, so the limits change to the data and not the other way round. Honest limit
+on the ILD1900 recordings: grey stairs, metal stairs and black-and-white paper look alike in all signal features, so "unknown
+material" cannot be told apart sharply; the answers are what teaches it over time.
+
+**"Fine" teaches the whole stretch.** Answering `normal` with `learn_s` does not only learn the flagged windows. All windows of the
+last `learn_s` seconds become normal examples and baseline, and for every feature the lowest and highest value seen in them is
+stored as a *confirmed range* (`ok_ranges`, saved in the model). A later window whose unusual features all lie inside a
+confirmed range (plus 10 % of its width) is not flagged. Open flags inside the stretch are resolved as normal, and a flag that
+was never answered becomes `expired` when a newer one comes, so an old question never pops up again. The monitor uses
+`/api/ml/suggest` to show the new evaluation limits it will apply (lowest and highest value of the window) before you answer.
+
 **Taught anomalies.** Some anomalies are not unusual on their own. Black metal, for example, sits within the
 spread of the other materials except for its low signal intensity. Once anomaly examples exist (a "not fine" answer,
 or a recording learned with `"label": "anomaly"`), every window is also classified by its 5 nearest neighbours among
@@ -196,6 +216,8 @@ settings through `/api/settings` starts the learning again (human labels are kep
 | `consecutive` | `2` | Unusual windows in a row before a flag |
 | `cooldown_s` | `5` | Quiet time after a flag |
 | `match_radius` | `3` | How close a window must be to a labelled example to count as "like it" |
+| `label_match` | `true` | Ask a person when a window matches no labeled data |
+| `label_match_radius` | `null` | Distance from labeled data that still counts as a match; `null` = calibrated from the data |
 | `learn_online` | `true` | Keep learning normal windows while watching (follows slow drift) |
 | `error_fraction` | `0.5` | Share of invalid or lost samples from which a window is an error |
 | `reject_z` | `null` | Score from which a window is an error instead of a flag (`null` = off) |
@@ -210,7 +232,7 @@ settings through `/api/settings` starts the learning again (human labels are kep
  "sensor": "ILD1900-10", "serial": "…", "source": "replay", "replay_of": "rec_20261127_203446.csv", "label_note": ""}
 ```
 `value` is in the monitor's unit (mm from the sensor face, or °C); `features` are in the sensor's own scale.
-`reason` is the feature that deviates most. Labels are also appended to `backend/ml/labels.jsonl`.
+`status` is `pending`, `normal`, `anomaly`, `expired` (replaced by a newer flag) or `error`. `reason` is the feature that deviates most. Labels are also appended to `backend/ml/labels.jsonl`.
 
 **Error file** (`error_file`, one JSON object per line, appended; a long error is split into lines of at most 5 s):
 ```json

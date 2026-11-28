@@ -493,3 +493,36 @@ test('the backend device check decides which sensor a status describes', () => {
   assert.equal(engine.sensorFromStatus({ info, device: { family: 'ild1420', verified: true } }), null);   // no layout for it here
   assert.equal(engine.sensorFromStatus({ info: { model: 'UC-SF22-S3', unit: '°C' }, device: { family: 'thermo_uc', verified: true } }), 'thermo_uc');
 });
+
+test('"fine" for a window widens the evaluation limits to its lowest and highest value, and undo restores them', () => {
+  engine.useSensor('ild1900');
+  const state = engine.createInitialState();
+  const profile = state.profiles[0];
+  const [lower, upper] = [profile.learnedLower, profile.learnedUpper];
+  const result = engine.acceptRange(profile, { value: 24.9, lo: 24.4, hi: 25.3, seconds: 30 }, 'typical dip', 12);
+  assert.ok(result.profile.learnedLower <= 24.4 - 0.005 + 1e-9 && result.profile.learnedLower >= 24.39);
+  assert.ok(result.profile.learnedUpper >= 25.3 + 0.005 - 1e-9 && result.profile.learnedUpper <= 25.31);
+  assert.equal(result.event.changed, true);
+  assert.deepEqual(result.event.range, [24.4, 25.3]);
+  assert.equal(result.profile.lower, profile.lower, 'the target limits stay');
+  const undone = engine.undoLearning(result.profile);
+  assert.deepEqual([undone.learnedLower, undone.learnedUpper], [lower, upper]);
+  const paused = engine.acceptRange({ ...profile, learning: false }, { lo: 24, hi: 26 });
+  assert.equal(paused.event.changed, false, 'paused learning keeps the limits');
+  assert.throws(() => engine.acceptRange(profile, {}), /ungültig/);
+});
+
+test('evaluation limits follow the training data: they widen to its range, never narrow, and can be undone', () => {
+  engine.useSensor('ild1900');
+  const profile = engine.createInitialState().profiles[0];
+  const [lower, upper] = [profile.learnedLower, profile.learnedUpper];
+  const fit = engine.fitToTraining(profile, 21.96, 26.04);
+  assert.ok(fit.profile.learnedLower <= 21.96 && fit.profile.learnedUpper >= 26.04);
+  assert.equal(fit.event.type, 'training');
+  assert.equal(fit.profile.lower, profile.lower, 'the target limits stay');
+  assert.equal(engine.fitToTraining(fit.profile, 22.5, 25.5), null, 'a narrower range changes nothing');
+  assert.equal(engine.fitToTraining({ ...profile, learning: false }, 20, 30), null, 'paused learning keeps the limits');
+  assert.equal(engine.fitToTraining(profile, NaN, 3), null);
+  const undone = engine.undoLearning(fit.profile);
+  assert.deepEqual([undone.learnedLower, undone.learnedUpper], [lower, upper]);
+});

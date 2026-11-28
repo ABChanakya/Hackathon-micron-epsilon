@@ -31,7 +31,7 @@ export default {
     "Überwacht das Signal": "Monitoring the signal",
     "Auffälligkeit erkannt": "Unusual signal detected",
     "Ungültige Daten verworfen": "Invalid data discarded",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "This detector learns signal patterns on the measurement server. Labels as normal or anomalous do not change specification or evaluation limits.",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "This detector learns signal patterns on the measurement server. Data accepted as a normal pattern can expand the evaluation limits. Specification limits remain unchanged.",
     "Gelernt für": "Learned for",
     "Gelernte Zeitfenster": "Learned windows",
     "Normalmuster / Anomalien": "Normal patterns / anomalies",
@@ -94,7 +94,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "The sensor model changed. Review the action again.",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "The baseline is being relearned. Learned examples are retained.",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "Baseline and learned examples were reset.",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "The original data is retained. Local saving is blocked. You can export new recordings as CSV."
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "The original data is retained. Local saving is blocked. You can export new recordings as CSV.",
+    "Bei unbekannten Daten fragen": "Ask about unknown data",
+    "Beschriftete Daten": "Labelled data",
+    "{windows} Fenster aus {sources} Quellen": "{windows} windows from {sources} sources",
+    "Trefferradius": "Match radius",
+    "{radius} (aus den Daten berechnet)": "{radius} (calculated from the data)",
+    "Gelernter Wertebereich": "Learned value range",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "Optional. 0.5–500 · Empty = calculated from the labelled data.",
+    "An Trainingsdaten angepasst": "Adjusted to training data"
   },
   "fr": {
     "Anzeige": "Affichage",
@@ -127,7 +135,7 @@ export default {
     "Überwacht das Signal": "Surveillance du signal",
     "Auffälligkeit erkannt": "Signal inhabituel détecté",
     "Ungültige Daten verworfen": "Données invalides écartées",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "Cette détection apprend les formes du signal sur le serveur de mesure. Les classements comme normal ou anomalie ne modifient pas les limites de spécification ou d’évaluation.",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "Cette détection apprend les formes du signal sur le serveur de mesure. Les données acceptées comme motif normal peuvent élargir les limites d’évaluation. Les limites de spécification restent inchangées.",
     "Gelernt für": "Appris pour",
     "Gelernte Zeitfenster": "Fenêtres apprises",
     "Normalmuster / Anomalien": "Motifs normaux / anomalies",
@@ -190,7 +198,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "Le modèle de capteur a changé. Vérifiez à nouveau l’action.",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "L’état normal est réappris. Les exemples appris sont conservés.",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "L’état normal et les exemples appris ont été réinitialisés.",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "Les données d’origine sont conservées. L’enregistrement local est bloqué. Vous pouvez exporter les nouvelles mesures en CSV."
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "Les données d’origine sont conservées. L’enregistrement local est bloqué. Vous pouvez exporter les nouvelles mesures en CSV.",
+    "Bei unbekannten Daten fragen": "Demander pour les données inconnues",
+    "Beschriftete Daten": "Données étiquetées",
+    "{windows} Fenster aus {sources} Quellen": "{windows} fenêtres provenant de {sources} sources",
+    "Trefferradius": "Rayon de correspondance",
+    "{radius} (aus den Daten berechnet)": "{radius} (calculé à partir des données)",
+    "Gelernter Wertebereich": "Plage de valeurs apprise",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "Facultatif. 0,5–500 · Vide = calculé à partir des données étiquetées.",
+    "An Trainingsdaten angepasst": "Adapté aux données d’apprentissage"
   },
   "es": {
     "Anzeige": "Pantalla",
@@ -223,7 +239,7 @@ export default {
     "Überwacht das Signal": "Supervisando la señal",
     "Auffälligkeit erkannt": "Señal inusual detectada",
     "Ungültige Daten verworfen": "Datos no válidos descartados",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "Esta detección aprende patrones de señal en el servidor. Clasificar como normal o anómalo no cambia los límites de especificación ni de evaluación.",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "Esta detección aprende patrones de señal en el servidor de medición. Los datos aceptados como patrón normal pueden ampliar los límites de evaluación. Los límites de especificación se mantienen.",
     "Gelernt für": "Aprendido para",
     "Gelernte Zeitfenster": "Ventanas aprendidas",
     "Normalmuster / Anomalien": "Patrones normales / anomalías",
@@ -286,7 +302,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "El modelo del sensor cambió. Revisa la acción de nuevo.",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "Se vuelve a aprender el estado normal. Se conservan los ejemplos aprendidos.",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "Se restablecieron el estado normal y los ejemplos aprendidos.",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "Se conservan los datos originales. El guardado local está bloqueado. Puedes exportar las nuevas grabaciones como CSV."
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "Se conservan los datos originales. El guardado local está bloqueado. Puedes exportar las nuevas grabaciones como CSV.",
+    "Bei unbekannten Daten fragen": "Preguntar por datos desconocidos",
+    "Beschriftete Daten": "Datos etiquetados",
+    "{windows} Fenster aus {sources} Quellen": "{windows} ventanas de {sources} fuentes",
+    "Trefferradius": "Radio de coincidencia",
+    "{radius} (aus den Daten berechnet)": "{radius} (calculado a partir de los datos)",
+    "Gelernter Wertebereich": "Rango de valores aprendido",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "Opcional. 0,5–500 · Vacío = calculado a partir de los datos etiquetados.",
+    "An Trainingsdaten angepasst": "Ajustado a los datos de entrenamiento"
   },
   "it": {
     "Anzeige": "Visualizzazione",
@@ -319,7 +343,7 @@ export default {
     "Überwacht das Signal": "Monitoraggio del segnale",
     "Auffälligkeit erkannt": "Segnale insolito rilevato",
     "Ungültige Daten verworfen": "Dati non validi scartati",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "Questa funzione apprende i modelli del segnale sul server di misura. La classificazione come normale o anomalo non modifica i limiti di specifica o valutazione.",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "Questa funzione apprende le forme del segnale sul server di misura. I dati accettati come modello normale possono ampliare i limiti di valutazione. I limiti di specifica restano invariati.",
     "Gelernt für": "Appreso per",
     "Gelernte Zeitfenster": "Finestre apprese",
     "Normalmuster / Anomalien": "Modelli normali / anomalie",
@@ -382,7 +406,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "Il modello del sensore è cambiato. Verifica nuovamente l’azione.",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "Lo stato normale viene riappreso. Gli esempi appresi vengono conservati.",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "Stato normale ed esempi appresi ripristinati.",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "I dati originali vengono conservati. Il salvataggio locale è bloccato. Puoi esportare le nuove registrazioni in CSV."
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "I dati originali vengono conservati. Il salvataggio locale è bloccato. Puoi esportare le nuove registrazioni in CSV.",
+    "Bei unbekannten Daten fragen": "Chiedi per i dati sconosciuti",
+    "Beschriftete Daten": "Dati etichettati",
+    "{windows} Fenster aus {sources} Quellen": "{windows} finestre da {sources} sorgenti",
+    "Trefferradius": "Raggio di corrispondenza",
+    "{radius} (aus den Daten berechnet)": "{radius} (calcolato dai dati)",
+    "Gelernter Wertebereich": "Intervallo di valori appreso",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "Facoltativo. 0,5–500 · Vuoto = calcolato dai dati etichettati.",
+    "An Trainingsdaten angepasst": "Adattato ai dati di addestramento"
   },
   "cs": {
     "Anzeige": "Zobrazení",
@@ -415,7 +447,7 @@ export default {
     "Überwacht das Signal": "Sleduje signál",
     "Auffälligkeit erkannt": "Zjištěn neobvyklý signál",
     "Ungültige Daten verworfen": "Neplatná data vyřazena",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "Tato detekce se učí průběhy signálu na měřicím serveru. Označení jako normální vzor nebo anomálie nemění předepsané ani vyhodnocovací meze.",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "Tato detekce se učí průběhy signálu na měřicím serveru. Data přijatá jako normální vzor mohou rozšířit vyhodnocovací meze. Předepsané meze zůstávají zachovány.",
     "Gelernt für": "Naučeno pro",
     "Gelernte Zeitfenster": "Naučená okna",
     "Normalmuster / Anomalien": "Normální vzory / anomálie",
@@ -478,7 +510,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "Model senzoru se změnil. Ověřte akci znovu.",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "Normální stav se učí znovu. Naučené příklady zůstávají zachovány.",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "Normální stav a naučené příklady byly obnoveny.",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "Původní data zůstávají zachována. Místní ukládání je zablokováno. Nové záznamy můžete exportovat jako CSV."
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "Původní data zůstávají zachována. Místní ukládání je zablokováno. Nové záznamy můžete exportovat jako CSV.",
+    "Bei unbekannten Daten fragen": "Ptát se na neznámá data",
+    "Beschriftete Daten": "Označená data",
+    "{windows} Fenster aus {sources} Quellen": "{windows} oken z {sources} zdrojů",
+    "Trefferradius": "Poloměr shody",
+    "{radius} (aus den Daten berechnet)": "{radius} (vypočteno z dat)",
+    "Gelernter Wertebereich": "Naučený rozsah hodnot",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "Volitelné. 0,5–500 · Prázdné = vypočteno z označených dat.",
+    "An Trainingsdaten angepasst": "Přizpůsobeno trénovacím datům"
   },
   "zh": {
     "Anzeige": "显示",
@@ -511,7 +551,7 @@ export default {
     "Überwacht das Signal": "正在监测信号",
     "Auffälligkeit erkannt": "检测到异常信号",
     "Ungültige Daten verworfen": "已丢弃无效数据",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "此检测功能在测量服务器上学习信号模式。将模式标记为正常或异常不会更改规格限值或评估限值。",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "此检测功能在测量服务器上学习信号模式。被接受为正常模式的数据可以扩大评估限值。规格限值保持不变。",
     "Gelernt für": "学习对象",
     "Gelernte Zeitfenster": "已学习的时间窗",
     "Normalmuster / Anomalien": "正常模式 / 异常模式",
@@ -574,7 +614,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "传感器模型已更改。请重新确认操作。",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "正在重新学习正常状态。已学习样例会保留。",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "已重置正常状态和已学习样例。",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "原始数据会保留。本地保存已被阻止。你可以将新的记录导出为 CSV。"
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "原始数据会保留。本地保存已被阻止。你可以将新的记录导出为 CSV。",
+    "Bei unbekannten Daten fragen": "询问未知数据",
+    "Beschriftete Daten": "已标注数据",
+    "{windows} Fenster aus {sources} Quellen": "来自 {sources} 个来源的 {windows} 个窗口",
+    "Trefferradius": "匹配半径",
+    "{radius} (aus den Daten berechnet)": "{radius}（根据数据计算）",
+    "Gelernter Wertebereich": "学习到的数值范围",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "可选。0.5–500 · 留空 = 根据已标注数据计算。",
+    "An Trainingsdaten angepasst": "已根据训练数据调整"
   },
   "ja": {
     "Anzeige": "表示",
@@ -607,7 +655,7 @@ export default {
     "Überwacht das Signal": "信号を監視中",
     "Auffälligkeit erkannt": "異常な信号を検出",
     "Ungültige Daten verworfen": "無効なデータを除外",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "この検出機能は測定サーバーで信号パターンを学習します。正常または異常の評価によって、仕様の上下限や評価範囲は変わりません。",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "この検出機能は測定サーバーで信号パターンを学習します。正常パターンとして承認されたデータにより、評価範囲が広がることがあります。仕様の上下限は維持されます。",
     "Gelernt für": "学習対象",
     "Gelernte Zeitfenster": "学習済み時間枠",
     "Normalmuster / Anomalien": "正常パターン / 異常パターン",
@@ -670,7 +718,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "センサーモデルが変わりました。操作をもう一度確認してください。",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "正常状態を再学習します。学習済み例は保持されます。",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "正常状態と学習済み例をリセットしました。",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "元のデータは保持されます。ローカル保存はブロックされています。新しい記録は CSV として保存できます。"
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "元のデータは保持されます。ローカル保存はブロックされています。新しい記録は CSV として保存できます。",
+    "Bei unbekannten Daten fragen": "未知のデータについて確認する",
+    "Beschriftete Daten": "ラベル付きデータ",
+    "{windows} Fenster aus {sources} Quellen": "{sources} 件のソースから {windows} 個のウィンドウ",
+    "Trefferradius": "一致半径",
+    "{radius} (aus den Daten berechnet)": "{radius}（データから算出）",
+    "Gelernter Wertebereich": "学習した値の範囲",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "任意。0.5～500 · 空欄 = ラベル付きデータから算出。",
+    "An Trainingsdaten angepasst": "学習データに合わせて調整"
   },
   "ko": {
     "Anzeige": "표시",
@@ -703,7 +759,7 @@ export default {
     "Überwacht das Signal": "신호 감시 중",
     "Auffälligkeit erkannt": "이상 신호 감지됨",
     "Ungültige Daten verworfen": "유효하지 않은 데이터 제외됨",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "이 감지 기능은 측정 서버에서 신호 패턴을 학습합니다. 정상 또는 이상으로 평가해도 규격 한계와 평가 범위는 바뀌지 않습니다.",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "이 감지 기능은 측정 서버에서 신호 패턴을 학습합니다. 정상 패턴으로 승인된 데이터는 평가 범위를 넓힐 수 있습니다. 규격 한계는 유지됩니다.",
     "Gelernt für": "학습 대상",
     "Gelernte Zeitfenster": "학습한 시간 구간",
     "Normalmuster / Anomalien": "정상 패턴 / 이상 패턴",
@@ -766,7 +822,15 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "센서 모델이 변경되었습니다. 동작을 다시 확인하세요.",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "정상 상태를 다시 학습합니다. 학습 예시는 유지됩니다.",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "정상 상태와 학습 예시가 초기화되었습니다.",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "원본 데이터는 유지됩니다. 로컬 저장이 차단되었습니다. 새 기록은 CSV로 내보낼 수 있습니다."
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "원본 데이터는 유지됩니다. 로컬 저장이 차단되었습니다. 새 기록은 CSV로 내보낼 수 있습니다.",
+    "Bei unbekannten Daten fragen": "알 수 없는 데이터에 대해 질문",
+    "Beschriftete Daten": "라벨이 지정된 데이터",
+    "{windows} Fenster aus {sources} Quellen": "{sources}개 소스의 {windows}개 구간",
+    "Trefferradius": "일치 반경",
+    "{radius} (aus den Daten berechnet)": "{radius} (데이터에서 계산됨)",
+    "Gelernter Wertebereich": "학습된 값 범위",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "선택 사항. 0.5–500 · 비워 두면 라벨 데이터에서 계산됩니다.",
+    "An Trainingsdaten angepasst": "학습 데이터에 맞게 조정됨"
   },
   "pirate": {
     "Anzeige": "Lookout",
@@ -799,7 +863,7 @@ export default {
     "Überwacht das Signal": "Watching the signal",
     "Auffälligkeit erkannt": "Unusual signal spotted",
     "Ungültige Daten verworfen": "Invalid readings cast aside",
-    "Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.": "This watch learns signal patterns aboard the server. Normal or anomaly labels leave specification and evaluation limits untouched.",
+    "Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.": "This watch learns signal patterns aboard the measurement server. Data accepted as a normal pattern can widen the evaluation limits. Specification limits stay on course.",
     "Gelernt für": "Learned for",
     "Gelernte Zeitfenster": "Learned windows",
     "Normalmuster / Anomalien": "Normal patterns / anomalies",
@@ -862,6 +926,14 @@ export default {
     "Das Sensormodell hat sich geändert. Bitte prüfe die Aktion erneut.": "The sensor model changed. Check your orders again.",
     "Der Normalzustand wird neu gelernt. Gelernte Beispiele bleiben erhalten.": "Learning the baseline anew. Learned examples stay aboard.",
     "Normalzustand und gelernte Beispiele wurden zurückgesetzt.": "Baseline and learned examples reset.",
-    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "The original data stays aboard. Local saving is blocked. Export new recordings as CSV, matey."
+    "Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.": "The original data stays aboard. Local saving is blocked. Export new recordings as CSV, matey.",
+    "Bei unbekannten Daten fragen": "Ask about uncharted data",
+    "Beschriftete Daten": "Marked data",
+    "{windows} Fenster aus {sources} Quellen": "{windows} windows from {sources} sources aboard",
+    "Trefferradius": "Match radius",
+    "{radius} (aus den Daten berechnet)": "{radius} (reckoned from the data)",
+    "Gelernter Wertebereich": "Learned value waters",
+    "Optional. 0,5–500 · Leer = aus den beschrifteten Daten berechnet.": "Optional. 0.5–500 · Empty = reckoned from the marked data.",
+    "An Trainingsdaten angepasst": "Adjusted to the training charts"
   }
 };

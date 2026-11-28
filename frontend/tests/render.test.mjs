@@ -99,3 +99,57 @@ test('assistant chart summaries match the visible window and displayed zero offs
   assert.ok(Math.abs(summary.trend - .1) < 1e-9);
   assert.equal(vm.runInContext('rt.points[0].value', context), 29);
 });
+
+test('deviation alarm offers one-shot and repeating modes and stops after recovery', () => {
+  engine.useSensor('ild1900');
+  const context = viewContext();
+  let tones = 0, nextTimer = 0, clearedTimer = null, scheduled;
+  context.playAlertSound = () => { tones++; };
+  context.setInterval = callback => { scheduled = callback; return ++nextTimer; };
+  context.clearInterval = timer => { clearedTimer = timer; };
+  context.localStorage = { setItem() {} };
+  context.toast = () => {};
+  vm.runInContext("rt.activeErrorKeys.add('deviation')", context);
+
+  const html = vm.runInContext('errorCenter()', context);
+  assert.match(html, /Einmal piepen/);
+  assert.match(html, /Wiederholen, bis der Wert stabil ist/);
+  vm.runInContext("setDeviationAlarmMode('single')", context);
+  assert.equal(vm.runInContext('rt.deviationAlarmTimer', context), null);
+  vm.runInContext("setDeviationAlarmMode('repeat')", context);
+  assert.equal(tones, 1, 'repeat mode sounds immediately');
+  assert.equal(vm.runInContext('rt.deviationAlarmTimer', context), 1);
+  scheduled();
+  assert.equal(tones, 2, 'repeat mode continues sounding while the deviation remains active');
+  vm.runInContext("resolveIncident('deviation')", context);
+  assert.equal(clearedTimer, 1, 'the alarm timer stops after the value returns within limits');
+  assert.equal(vm.runInContext('rt.deviationAlarmTimer', context), null);
+});
+
+test('the 3D sensor view is only offered when the device check calls for it', () => {
+  const context = viewContext();
+  engine.useSensor('ild1900');
+  const has3d = () => vm.runInContext('has3d()', context);
+  assert.equal(has3d(), true, 'a distance sensor without backend info keeps its 3D view');
+  vm.runInContext("rt.backendStatus={device:{verified:true,ui:{sensor_3d:true}}}", context);
+  assert.equal(has3d(), true);
+  assert.match(vm.runInContext('monitor()', context), /id="mini-viewer"/);
+  vm.runInContext("rt.backendStatus={device:{verified:false,ui:null}}", context);
+  assert.equal(has3d(), false, 'an unverified device gets no 3D view');
+  assert.doesNotMatch(vm.runInContext('monitor()', context), /id="mini-viewer"/);
+  vm.runInContext("rt.backendStatus={device:{verified:true,ui:{sensor_3d:false}}}", context);
+  assert.equal(has3d(), false);
+  engine.useSensor('thermo_uc');
+  vm.runInContext("rt.backendStatus=null", context);
+  assert.equal(has3d(), false, 'the thermometer never gets the 3D sensor');
+  engine.useSensor('ild1900');
+});
+
+test('the recording controls and the toast helper are defined (a merge once dropped them)', () => {
+  const context = viewContext();
+  for (const name of ['startRecord', 'finishRecord', 'saveRecording', 'stopRecord', 'toast', 'setProfile', 'fitLimitsToTraining']) {
+    assert.equal(vm.runInContext(`typeof ${name}`, context), 'function', name);
+  }
+  engine.useSensor('ild1900');
+  assert.match(vm.runInContext("openDialog.toString()", context), /record-class/);
+});

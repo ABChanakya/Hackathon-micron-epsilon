@@ -40,6 +40,20 @@ test('ML validation retains backend units, optional disabled values and backend 
  const cross=validateMlSettings({...mlSettingsValues(config),reject_z:'5',hard_min:'26',hard_max:'25',error_file:'bad.csv'}).errors;
  for(const key of ['reject_z','hard_min','hard_max','error_file'])assert.ok(cross[key]);
 });
+test('label matching validates optional calibrated/manual radii without extending legacy payloads',()=>{
+ const legacy=validateMlSettings(mlSettingsValues(config));
+ assert.equal(Object.hasOwn(legacy.value,'label_match'),false);
+ assert.equal(Object.hasOwn(legacy.value,'label_match_radius'),false);
+ const values=mlSettingsValues({...config,label_match:false,label_match_radius:null});
+ assert.equal(values.label_match,false);assert.equal(values.label_match_radius,'');
+ const automatic=validateMlSettings(values);assert.deepEqual(automatic.errors,{});
+ assert.equal(automatic.value.label_match,false);assert.equal(automatic.value.label_match_radius,null);
+ for(const [raw,expected]of [['0,5',.5],['12.5',12.5],['500',500]]){
+  const result=validateMlSettings({...values,label_match:true,label_match_radius:raw});
+  assert.deepEqual(result.errors,{});assert.equal(result.value.label_match,true);assert.equal(result.value.label_match_radius,expected);
+ }
+ for(const raw of ['0.49','500.1','NaN','Infinity'])assert.ok(validateMlSettings({...values,label_match_radius:raw}).errors.label_match_radius,raw);
+});
 test('ML operating status reflects runtime rather than configured checkboxes',()=>{
  assert.equal(mlOperatingState({state:'idle',config:{enabled:true}}),'Wartet auf Sensordaten');
  assert.equal(mlOperatingState({state:'off'}),'Erkennung ausgeschaltet');assert.equal(mlOperatingState(null),'Messserver nicht erreichbar');

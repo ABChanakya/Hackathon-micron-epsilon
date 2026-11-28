@@ -14,3 +14,14 @@ test('settings runtime switches whole field errors and reset instructions throug
  await setLanguage('en');assert.equal(translateText('Untere Grenze (°C)'),'Lower limit (°C)');
  await setLanguage('de');assert.equal(translateText(source),source);
 });
+test('label-matching explanations and statistics translate as whole messages in all ten languages',async()=>{
+ const explanation='Diese Erkennung lernt Signalformen auf dem Messserver. Als Normalmuster akzeptierte Daten können die Auswertungsgrenzen erweitern. Die Sollgrenzen bleiben erhalten.';
+ const obsolete='Diese Erkennung lernt Signalformen auf dem Messserver. Bewertungen als Normalmuster oder Anomalie verändern keine Soll- oder Auswertungsgrenzen.';
+ for(const code of Object.keys(copy)){
+  await setLanguage(code);assert.equal(translateText(explanation),copy[code][explanation]);assert.equal(Object.hasOwn(copy[code],obsolete),false);
+  for(const key of ['Bei unbekannten Daten fragen','Trefferradius','Gelernter Wertebereich','An Trainingsdaten angepasst'])assert.equal(translateText(key),copy[code][key]);
+  assert.equal(translateText('42 Fenster aus 2 Quellen'),copy[code]['{windows} Fenster aus {sources} Quellen'].replace('{windows}','42').replace('{sources}','2'));
+  assert.equal(translateText('2,75 (aus den Daten berechnet)'),copy[code]['{radius} (aus den Daten berechnet)'].replace('{radius}','2,75'));
+ }
+ await setLanguage('de');assert.equal(translateText(explanation),explanation);
+});
