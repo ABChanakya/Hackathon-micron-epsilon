@@ -487,3 +487,17 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .ml-advanced > summary::-webkit-details-marker, .connection-details > summary::-webkit-details-marker { display: none; }
 .ml-advanced > summary::before, .connection-details > summary::before { content: "▸"; color: var(--muted); font-size: 11px; transition: transform .15s; }
 .ml-advanced[open] > summary::before, .connection-details[open] > summary::before { transform: rotate(90deg); }
+
+/* Factory plan in the desktop monitor (module shared with the phone view, which defines these names) */
+.factory-host { padding-top: 0; --border: var(--line); --error: var(--bad); --mono: 'JetBrains Mono', ui-monospace, monospace; }
+.factory-host .detail-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.factory-host .detail-meta { color: var(--muted); font-size: 12px; }
+.factory-host h2 { font-size: 18px; margin: 0; }
+.factory-host button, .factory-host select { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.factory-host .factory-toggle { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.factory-host .factory-toggle .control-icon { width: 16px; height: 16px; }
+.factory-host .factory-map, .factory-host .factory-grid { min-height: 360px; }
+.factory-host .factory-map { height: clamp(320px, 38vw, 560px); }
+.factory-host .factory-marker { min-height: 44px; padding: 2px; border-color: transparent; background: transparent; }
+.factory-host .factory-tile { min-height: 44px; padding: .35rem .45rem; border-radius: 6px; background: #111a24; }
+.factory-host .factory-ack { padding: 6px 12px; border-radius: 6px; background: var(--surface2); }

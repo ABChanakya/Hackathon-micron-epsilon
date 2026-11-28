@@ -36,7 +36,10 @@ function marker(markers, text, activate) {
   return button;
 }
 
-export function mountFactoryPlan(parent, { selectSensor }) {
+// Used by the phone view and the desktop monitor. Options: selectSensor(sensor) when a sensor is chosen (sensor.live
+// for the one a real sensor drives), onAlarm({ key, label, active, text }) when a simulated module starts or stops an
+// alarm (the live one is reported by the monitor itself), open: show the plan expanded.
+export function mountFactoryPlan(parent, { selectSensor, onAlarm = () => {}, open: startOpen = false }) {
   const section = document.createElement('section');
   section.className = 'factory-section';
   section.setAttribute('aria-label', 'Fabrikplan');
@@ -281,6 +284,11 @@ export function mountFactoryPlan(parent, { selectSensor }) {
       tile.state.textContent = alarmText[r.alarm] + (r.live && r.reason ? ' · ' + r.reason : '');
       tile.live.hidden = !r.live;
       if (r.alarm === 'active') active.push(r);
+      if (!r.live && (r.alarm === 'active') !== (seen.get(r.key) === 'active')) {
+        onAlarm({ key: r.key, label: tile.head.label, active: r.alarm === 'active',
+          text: tile.head.label + ': ' + format(r.value, r.digits) + ' ' + r.unit
+            + ' (Grenzen ' + format(r.lower, r.digits) + '–' + format(r.upper, r.digits) + ' ' + r.unit + ')' });
+      }
       if (r.alarm === 'active' && seen.get(r.key) !== 'active') {
         const head = tile.head;
         status.textContent = r.live
@@ -364,5 +372,6 @@ export function mountFactoryPlan(parent, { selectSensor }) {
   });
   parent.append(section);
   new ResizeObserver(() => { if (mode === 'map') renderMap(); }).observe(viewport);
+  if (startOpen) toggle.click();
   return () => { for (const item of selectable) item.setAttribute('aria-pressed', 'false'); };
 }

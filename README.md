@@ -49,6 +49,14 @@ Die Handy-Ansicht liegt in `frontend/Handy frontend/`. Am Rechner: http://127.0.
 WLAN): `python3 "frontend/Handy frontend/serve.py"` und die Adresse aus dem README dort öffnen. Der Handy-Server leitet
 nur `/api/status`, `/api/latest` und `/api/device` lesend an den Messserver weiter.
 
+## Fabrikplan
+
+Der Messplatz (unter dem Messbereich) und die Handy-Ansicht zeigen einen fiktiven Fabrikplan. Herausgezoomt ist es der
+Hallenplan, hineingezoomt eine Kachel je Station in ihrer Lage auf dem Plan. Ein angeschlossener echter Sensor speist ein
+Modul (ILD1900: Qualitätskontrolle · Messkopf A, thermoMETER: Mechanische Bearbeitung, mit **LIVE** markiert); dessen Alarm
+kommt von der KI oder einem ungültigen Messwert. Die übrigen Module sind simuliert; **Fehler simulieren** lässt einen davon
+ausschlagen. Module im Alarm blinken rot, bis sie quittiert sind. Code: `frontend/Handy frontend/fabrikplan/`.
+
 ## KI-Anomalieerkennung
 
 Der Messserver lernt nach dem Verbinden etwa 10 s lang, wie das Signal des Sensors normal aussieht (oder aus einer
