@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import {assistantText} from '../dist/assistant-i18n.js';
+import {pdfText,getPdfLocale} from '../dist/pdf-i18n.js';
 
 const source = await readFile(new URL('../dist/app.js', import.meta.url), 'utf8');
 const end = source.indexOf("document.addEventListener('click'");
@@ -13,7 +14,7 @@ const engine = await import(`data:text/javascript;base64,${Buffer.from(data).toS
 
 function viewContext() {
   const context = vm.createContext({
-    ...engine, loadState: engine.createInitialState, structuredClone, getLocale: () => 'de-DE', getLanguage: () => 'de', assistantText,
+    ...engine, loadState: engine.createInitialState, structuredClone, getLocale: () => 'de-DE', getLanguage: () => 'de', assistantText, pdfText, getPdfLocale,
     location: { protocol: 'http:', hostname: 'localhost', host: 'localhost:8000', port: '8000' },
     performance: { now: () => 0 },
   });

@@ -45,7 +45,7 @@ function makeFallback(container, onSelect, initialState) {
   wrapper.style.cssText = 'height:100%;display:grid;align-content:center;justify-items:center;gap:12px;padding:10px;text-align:center';
   const explanation = document.createElement('p');
   explanation.textContent = '3D-Ansicht in diesem Browser nicht verfügbar.';
-  explanation.style.cssText = 'font-size:11px;line-height:1.4;margin:0';
+  explanation.style.cssText = 'font-size:14px;line-height:1.4;margin:0';
   const viewerHelp = container.querySelector('.viewer-help');
   const helpWasHidden = viewerHelp?.hidden;
   if (viewerHelp) viewerHelp.hidden = true;
@@ -58,7 +58,7 @@ function makeFallback(container, onSelect, initialState) {
     button.type = 'button';
     button.className = 'sensor3d-fallback-led';
     button.textContent = name === 'state' ? 'State-LED' : 'Output-LED';
-    button.style.cssText = 'min-height:34px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--surface);color:inherit;font:inherit;font-size:11px;cursor:pointer';
+    button.style.cssText = 'min-height:44px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--surface);color:inherit;font:inherit;font-size:14px;cursor:pointer';
     button.onclick = () => onSelect?.(name);
     buttons[name] = button;
     row.append(button);
@@ -82,6 +82,13 @@ function makeFallback(container, onSelect, initialState) {
       if (viewerHelp) viewerHelp.hidden = helpWasHidden;
     },
   };
+}
+
+/** Distance needed to contain projected model corners, including the laser, with an 8% gutter. */
+export function fitCameraDistance(corners, aspect, verticalFov = 35) {
+  const vertical = Math.tan(verticalFov * Math.PI / 360);
+  const horizontal = vertical * Math.max(.05, aspect);
+  return Math.max(.1, ...corners.flatMap(([x, y, z]) => [z + Math.abs(x) * 1.08 / horizontal, z + Math.abs(y) * 1.08 / vertical]));
 }
 
 /**
@@ -113,10 +120,10 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50);
-  const initialCamera = new THREE.Vector3(2.6, 3.7, 5.2);
+  const initialCamera = new THREE.Vector3(2.6, 3.35, 5.2);
   camera.position.copy(initialCamera);
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, 0.25, 0);
+  controls.target.set(0, -0.10, 0);
   controls.enableDamping = false;
   controls.enablePan = false;
   controls.minDistance = 3.8;
@@ -227,6 +234,24 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   addMesh(new THREE.CylinderGeometry(0.115, 0.115, 0.032, 32), black, [0.96, -0.917, 0.085]);
   const laserMaterial = new THREE.MeshStandardMaterial({ color: 0x8a2333, emissive: 0xc62941, roughness: 0.27 });
   addMesh(new THREE.CylinderGeometry(0.059, 0.059, 0.013, 24), laserMaterial, [0.96, -0.940, 0.085]);
+
+  // A fine schematic beam exits the actual aperture, with a subtle halo and no post-processing.
+  const laserBeam = new THREE.Group();
+  laserBeam.position.set(0.96, -0.949, 0.085);
+  laserBeam.visible = false;
+  sensor.add(laserBeam);
+  const beamLength = 0.95;
+  for (const [radius, opacity] of [[0.022, 0.12], [0.006, 0.95]]) {
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius, radius, beamLength, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff243a, transparent: true, opacity,
+        depthTest: true, depthWrite: false, toneMapped: false }),
+    );
+    beam.position.y = -beamLength / 2;
+    beam.renderOrder = radius > 0.01 ? 1 : 2;
+    beam.raycast = () => {};
+    laserBeam.add(beam);
+  }
 
   // Top plate with molded red cable seat, four fasteners and a shortened cable.
   const cableX = 0.48;
@@ -390,18 +415,53 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
       updateLedButton(ledButtons[name], name, value);
     }
     const laserActive = !['off', 'unknown'].includes(currentStatus.state);
+    laserBeam.visible = laserActive;
     laserMaterial.emissiveIntensity = laserActive ? 0.6 : 0;
     laserMaterial.color.setHex(laserActive ? 0x8a2333 : 0x202832);
     render();
   };
 
+  sensor.updateWorldMatrix(true, true);
+  const modelBounds = new THREE.Box3().setFromObject(sensor);
+  const modelCorners = [];
+  for (const x of [modelBounds.min.x, modelBounds.max.x])
+    for (const y of [modelBounds.min.y, modelBounds.max.y])
+      for (const z of [modelBounds.min.z, modelBounds.max.z]) modelCorners.push(new THREE.Vector3(x, y, z));
+  const initialTarget = controls.target.clone();
+  const initialDirection = initialCamera.clone().sub(initialTarget).normalize();
+  const requiredDistance = (aspect, direction) => {
+    const right = new THREE.Vector3().crossVectors(camera.up, direction).normalize();
+    const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+    const projected = modelCorners.map(corner => {
+      const offset = corner.clone().sub(controls.target);
+      return [offset.dot(right), offset.dot(up), offset.dot(direction)];
+    });
+    return fitCameraDistance(projected, aspect, camera.fov);
+  };
+  const resetView = () => {
+    controls.target.copy(initialTarget);
+    const distance = requiredDistance(camera.aspect, initialDirection);
+    camera.position.copy(initialTarget).addScaledVector(initialDirection, distance);
+    controls.update();
+    render();
+  };
+  let sized = false;
   const resize = () => {
     if (disposed) return;
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight || 260);
+    const direction = camera.position.clone().sub(controls.target).normalize();
+    const zoom = sized ? camera.position.distanceTo(controls.target) / requiredDistance(camera.aspect, direction) : 1;
+    const aspect = width / height;
+    const distance = requiredDistance(aspect, direction);
     renderer.setSize(width, height, false);
-    camera.aspect = width / height;
+    camera.aspect = aspect;
+    camera.position.copy(controls.target).addScaledVector(direction, distance * zoom);
+    controls.minDistance = distance * .55;
+    controls.maxDistance = distance * 2.4;
     camera.updateProjectionMatrix();
+    controls.update();
+    sized = true;
     render();
   };
   const resizeObserver = new ResizeObserver(resize);
@@ -442,8 +502,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
       render();
     } else if (event.key === 'Home') {
       event.preventDefault();
-      controls.reset();
-      render();
+      resetView();
     }
   };
   canvas.addEventListener('pointerdown', onPointerDown);
@@ -454,7 +513,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
 
   return {
     setStatus,
-    reset() { controls.reset(); render(); },
+    reset() { resetView(); },
     dispose() {
       if (disposed) return;
       disposed = true;

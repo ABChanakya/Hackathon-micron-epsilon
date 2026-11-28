@@ -1,5 +1,13 @@
 // Italian UI copy. Placeholder names match the canonical source dictionary.
 export default {
+  "Slope": "Pendenza",
+  "Trend über 1 s": "Andamento su 1 s",
+  "Aktueller Slope": "Pendenza attuale",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "Grafico della pendenza: variazione al secondo nel tempo",
+  "Warte auf Messwerte": "In attesa di misure",
+  "Noch nicht genügend Messwerte": "Misure ancora insufficienti",
+  "Keine gültigen Messwerte": "Nessuna misura valida",
+  "Messreihe unterbrochen": "Serie di misure interrotta",
   "Farbschema": "Tema",
   "Zur Hauptseite": "Torna alla pagina principale",
   "Hauptnavigation": "Navigazione principale",

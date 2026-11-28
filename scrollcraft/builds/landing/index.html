@@ -153,7 +153,10 @@
     box-shadow: 0 10px 24px rgba(196,20,31,0.22); transition: transform 160ms ease, box-shadow 160ms ease; }
   .cta:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(196,20,31,0.3); }
   .cta:active { transform: translateY(0); }
-  .cta svg { width: 1.1em; height: 1.1em; }
+  .cta svg { width: 1.1em; height: 1.1em; flex-shrink: 0; }
+  .cta { max-width: 100%; min-height: 44px; }
+  .cta--hero { margin-top: 1.2rem; font-size: 1rem; padding: .85rem 1.1rem; }
+  .cta:focus-visible { outline: 3px solid var(--hum-ink); outline-offset: 5px; }
   .foot { position: absolute; left: var(--pad); right: var(--pad); bottom: 1.4rem; display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem;
     font-size: 0.78rem; line-height: 1.5; color: var(--hum-soft); }
 
@@ -201,6 +204,7 @@
       <div class="side side--hum" data-side="Für Menschen">
         <h2 class="h-lg" data-i18n="hero_h2">Und niemand versteht, was er sagt.</h2>
         <p class="lede soft" data-i18n="hero_p">Unser Hackathon-Projekt macht seine Messwerte für jeden lesbar.</p>
+        <a class="cta cta--hero" id="hero-cta" href="/"><span data-i18n="cta">Sensor Cockpit öffnen</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       </div>
     </div>
   </section>
@@ -304,7 +308,7 @@
           <div class="close__inner">
             <h2 class="h-xl" data-sc-cue="0 1 0 0" data-i18n="close_h2">Messwerte, die jeder lesen kann.</h2>
             <p class="lede soft" data-sc-cue="0 1 0 0" data-i18n="close_p">Live, aufgezeichnet, verglichen. Im Browser.</p>
-            <a class="cta" id="cta" href="/" data-sc-cue="0 1 0 0"><span data-i18n="cta">Monitor öffnen</span>
+            <a class="cta" id="cta" href="/" data-sc-cue="0 1 0 0"><span data-i18n="cta">Sensor Cockpit öffnen</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
           </div>
           <footer class="foot">
@@ -320,8 +324,8 @@
 </main>
 
 <script src="data.js"></script>
-<script src="i18n.js"></script>
-<script src="page.js?v=cockpit-lang-1"></script>
+<script src="i18n.js?v=ui-review-1"></script>
+<script src="page.js?v=ui-review-1"></script>
 <script src="scrollcraft.js"></script>
 <script>ScrollCraft.mount(document.body); window.LandingPage && window.LandingPage.start();</script>
 </body>

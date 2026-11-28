@@ -196,6 +196,15 @@ class AnomalyAgentTest(unittest.TestCase):
         self.assertGreater(len(seed.anomaly_ex), 0, "black metal is taught as anomaly")
         self.assertEqual(seed.frame()["state"], "watching")
 
+    def test_label_match_radius_validates_optional_boundaries(self):
+        for value in (0.49, 500.1, float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                anomaly.validate_config({"label_match_radius": value}, anomaly.DEFAULTS)
+        for value in (0.5, 500, None, ""):
+            with self.subTest(value=value):
+                config = anomaly.validate_config({"label_match_radius": value}, anomaly.DEFAULTS)
+                self.assertEqual(config["label_match_radius"], None if value in (None, "") else value)
+
     def test_config_validation(self):
         with self.assertRaises(ValueError):
             self.agent.set_config({"sensitivity": 0})

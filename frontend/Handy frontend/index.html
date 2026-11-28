@@ -6,22 +6,23 @@
   <meta name="theme-color" content="#ffffff">
   <title>Sensor Cockpit · Micro-Epsilon</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="fabrikplan/fabrikplan.css?v=live-1">
-  <script type="module" src="app.mjs"></script>
+  <link rel="stylesheet" href="style.css?v=ui-review-3">
+  <link rel="stylesheet" href="fabrikplan/fabrikplan.css?v=live-2">
+  <script type="module" src="app.mjs?v=ui-review-factory-live-1"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Zum Inhalt</a>
   <header class="site-header">
     <div class="header-inner">
-      <div class="brand">
+      <a class="brand" id="cockpit-link" href="/" aria-label="Sensor Cockpit öffnen">
         <img class="brand-logo" src="assets/micro-epsilon-logo.svg" width="32" height="32" alt="">
         <span><strong>Micro-Epsilon</strong><small>Sensor Cockpit</small></span>
-      </div>
+      </a>
       <div class="header-actions">
         <button class="icon-button" type="button" id="open-settings" aria-label="Einstellungen öffnen" title="Einstellungen" aria-haspopup="dialog"><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.24 10.06 L21.88 10.44 L21.88 13.56 L19.24 13.94 L18.50 15.75 L20.09 17.88 L17.88 20.09 L15.75 18.50 L13.94 19.24 L13.56 21.88 L10.44 21.88 L10.06 19.24 L8.25 18.50 L6.12 20.09 L3.91 17.88 L5.50 15.75 L4.76 13.94 L2.12 13.56 L2.12 10.44 L4.76 10.06 L5.50 8.25 L3.91 6.12 L6.12 3.91 L8.25 5.50 L10.06 4.76 L10.44 2.12 L13.56 2.12 L13.94 4.76 L15.75 5.50 L17.88 3.91 L20.09 6.12 L18.50 8.25 Z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></svg></button>
         <button class="icon-button" type="button" id="open-help" aria-label="Hilfe öffnen" title="Hilfe" aria-haspopup="dialog"><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 8a3 3 0 1 1 5 2c-2 1-2 2-2 3 M12 17v.01 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0"/></svg></button>
       </div>
+      <div class="compact-monitor" aria-label="Messstatus"><span id="compact-source">Demodaten</span><span id="compact-state" class="status" data-state="valid">Demoanzeige</span></div>
     </div>
   </header>
 
@@ -95,6 +96,11 @@
         <span id="live-reading">—</span><span class="reading-unit" id="live-unit"></span>
       </div>
       <p id="live-notice" class="detail-meta" hidden></p>
+      <p id="live-history" class="detail-meta" hidden></p>
+      <div class="connection-actions" id="connection-actions" hidden>
+        <a class="action-link" id="live-cockpit-link" href="/">Sensor Cockpit öffnen</a>
+        <button type="button" id="connection-help">Verbindungshilfe</button>
+      </div>
       <figure id="live-chart" hidden>
         <div class="chart-unit" id="live-chart-unit"></div>
         <div class="chart-frame">
@@ -118,6 +124,7 @@
     <form method="dialog">
       <h2 id="settings-title">Einstellungen</h2>
       <div class="settings-fields">
+        <label class="select-field" for="language-select">Sprache für alle Seiten<select id="language-select" data-field="language"></select></label>
         <label class="select-field" for="theme">
           Farbschema
           <select id="theme"><option value="light">Hell</option><option value="dark">Dunkel</option></select>
@@ -142,11 +149,15 @@
     <form method="dialog">
       <h2 id="help-title">Hilfe</h2>
       <ul>
-        <li>Öffne Live-Daten, um die aktuelle Messung vom Sensorserver am Rechner zu sehen.</li>
+        <li>Verbinde den Sensor am Rechner und öffne dort das Sensor Cockpit.</li>
+        <li>Verbinde Handy und Rechner mit demselben Netzwerk.</li>
+        <li>Wähle im Sensor Cockpit die Datenquelle und verbinde den Sensor.</li>
+        <li>Öffne auf dem Handy Live-Daten, um die Messung zu sehen.</li>
         <li>Die Desktop-Demo beginnt bei null und erzeugt fünf simulierte Messwerte pro Sekunde.</li>
         <li>Mit Anzeige pausieren hältst du den dargestellten Stand fest. Beim Fortsetzen springt die Anzeige ins aktuelle 30-Sekunden-Fenster.</li>
         <li>Unter Einstellungen kannst du Schriftgröße, farbsehfreundliche Farben und Sprachausgabe einstellen.</li>
       </ul>
+      <a class="action-link" id="help-cockpit-link" href="/">Sensor Cockpit öffnen</a>
       <button class="primary" type="submit">Schließen</button>
     </form>
   </dialog>

@@ -47,7 +47,10 @@
   Array.prototype.forEach.call(document.querySelectorAll('.side--hum'), function (el) { el.setAttribute('data-side', t('side_human')); });
   $('.empty').setAttribute('aria-label', t('t_empty'));
   $('#trace').setAttribute('aria-label', t('peak_raw_cap'));
-  $('#cta').href = MONITOR_URL;
+  var cockpitLink = new URL(MONITOR_URL, location.href);
+  cockpitLink.searchParams.set('lang', code);
+  $('#cta').href = cockpitLink.toString();
+  $('#hero-cta').href = cockpitLink.toString();
 
   var sel = $('#lang');
   sel.setAttribute('aria-label', t('lang'));

@@ -80,3 +80,25 @@ From `backend/`, install `requirements-dev.txt`, then run:
 python -m unittest discover -s tests
 ```
 The checks use isolated in-process simulator and temperature fixtures and do not open a serial port or contact a running backend.
+
+## Local language assistant
+
+The assistant uses local Ollama inference, separately from the anomaly agent. From the repository root, explicitly
+download the model once with `./scripts/start-assistant.sh setup`, then use `./scripts/start-assistant.sh start`.
+The normal `./start.sh` does not start Ollama or download models. The helper also finds the CLI inside an existing
+macOS `Ollama.app`; it requires no system-wide installation or `launchctl` changes.
+
+| Backend environment | Default | Meaning |
+|---|---|---|
+| `ASSISTANT_OLLAMA_URL` | `http://127.0.0.1:11434` | Local Ollama origin; the backend accepts loopback HTTP(S) origins |
+| `ASSISTANT_MODEL` | `qwen3:4b-instruct` | Exact installed local model tag |
+| `ASSISTANT_TIMEOUT_SECONDS` | `60` | Request timeout, from 1 to 180 seconds |
+| `ASSISTANT_MAX_CONCURRENT` | `2` | Concurrent requests, from 1 to 4 |
+
+Set these variables in the shell that starts the backend. The service exposes `GET /api/assistant/status` and
+`POST /api/assistant/chat`, `/explain-error`, `/explain-chart`, and `/command`. Status has `state`
+(`ready`, `unavailable`, `model_missing`, or `busy`), `model`, `provider: "ollama"`, and `local: true`.
+Responses identify the model and curated knowledge sources. Parameter commands are simulation only and never call
+sensor, profile, or ML mutation endpoints. No manufacturer manuals or manual retrieval index are included.
+
+See [ASSISTANT.md](ASSISTANT.md) for startup, offline verification, model digest recording and benchmark procedure.

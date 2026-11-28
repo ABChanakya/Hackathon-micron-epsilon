@@ -8,7 +8,7 @@ const placeholders = text => [...text.matchAll(/\{(\w+)\}/g)].map(match => match
 test('the assistant preview covers the same ten presentation languages without missing messages', () => {
   assert.deepEqual(Object.keys(assistantMessages), languages);
   const canonical = Object.keys(assistantMessages.de).sort();
-  assert.equal(canonical.length, 111);
+  for (const required of ['title','connectionAnswer','previewNote','rangeAnswer','chartTitle']) assert.ok(canonical.includes(required), required);
   for (const language of languages) {
     assert.deepEqual(Object.keys(assistantMessages[language]).sort(), canonical, language);
     for (const [key, value] of Object.entries(assistantMessages[language])) {

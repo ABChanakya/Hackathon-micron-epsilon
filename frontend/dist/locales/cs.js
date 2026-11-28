@@ -1,5 +1,13 @@
 // Monitor translations. Preserve source keys and named placeholders.
 export default {
+  "Slope": "Směrnice",
+  "Trend über 1 s": "Trend za 1 s",
+  "Aktueller Slope": "Aktuální směrnice",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "Graf směrnice: změna za sekundu v čase",
+  "Warte auf Messwerte": "Čekání na naměřené hodnoty",
+  "Noch nicht genügend Messwerte": "Zatím není dostatek naměřených hodnot",
+  "Keine gültigen Messwerte": "Žádné platné naměřené hodnoty",
+  "Messreihe unterbrochen": "Řada měření byla přerušena",
   "Farbschema": "Barevný režim",
   "Zur Hauptseite": "Zpět na hlavní stránku",
   "Hauptseite": "Hlavní stránka",

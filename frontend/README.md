@@ -46,13 +46,13 @@ Die Messbrücke sendet den absoluten Abstand ab Sensorfront:
 
 Das Projekt-Backend kann über `ws://localhost:8000/ws/stream` angebunden werden, wenn der Browser auch dessen `/api/status` lesen kann. Dort prüft der Monitor Modell und Messbereich. Verwende bei einem lokalen Aufbau denselben Ursprung oder einen dafür konfigurierten Proxy. Der Monitor liest `dist_from_face_mm`, also den Abstand ab Sensorfront ohne Nullpunktverschiebung.
 
-## Assistentenvorschau
+## Lokaler KI-Assistent
 
-Der Assistent in der Kopfzeile öffnet eine Vorschau mit Fragen, Fehlererklärungen, Diagrammzusammenfassungen und Parameterbefehlen. Am Cockpit-Diagramm und an Sensorhinweisen gibt es direkte Einstiege. Die Vorschau berücksichtigt alle zehn Oberflächensprachen.
+Der Assistent in der Kopfzeile verbindet Fragen, Fehlererklärungen, Diagrammzusammenfassungen und simulierte Parameterbefehle mit einem lokalen Modell über das FastAPI-Backend. Am Cockpit-Diagramm und an Sensorhinweisen gibt es direkte Einstiege. Die Vorschau berücksichtigt alle zehn Oberflächensprachen.
 
-`dist/assistant.js` stellt die vier asynchronen Funktionen `askQuestion`, `explainError`, `explainChart` und `parseParameterCommand` bereit. Aktuell liefern sie lokale Beispielantworten ohne Netzwerkzugriff. `dist/assistant-ui.js` erhält aktuelle Sensor-, Profil- und Diagrammdaten über drei Callback-Funktionen. Die Diagrammfunktion steht im Cockpit zur Verfügung und erklärt dessen sichtbaren Zeitraum.
+`dist/assistant.js` stellt die vier asynchronen Funktionen `askQuestion`, `explainError`, `explainChart` und `parseParameterCommand` bereit. Sie rufen die gleichnamigen `/api/assistant/`-Endpunkte auf; es gibt keinen stillen Rückfall auf Beispielantworten. Die optionale dritte Übergabe enthält Sprache, begrenzten Gesprächsverlauf, Backendadresse und Abbruchsignal. `dist/assistant-ui.js` erhält aktuelle Sensor-, Profil- und Diagrammdaten über Callback-Funktionen; die API-Adresse folgt der konfigurierten Messbrücke. Die Diagrammfunktion steht im Cockpit zur Verfügung und erklärt dessen sichtbaren Zeitraum.
 
-Parameterbefehle erzeugen einen Vorschlag. Bestätigen und Verwerfen sind vollständig durchspielbar; auch eine Bestätigung verändert weder Profil noch Hardware. Vor der Bestätigung werden Sensor, Einheit, Profilversion und bisheriger Wert erneut geprüft. Für die spätere Backend-Anbindung kann der Mock-Client ersetzt werden, ohne den Drawer umzubauen.
+Parameterbefehle erzeugen einen Vorschlag. Bestätigen und Verwerfen sind vollständig durchspielbar; auch eine Bestätigung verändert weder Profil noch Hardware. Vor der Bestätigung werden Sensor, Einheit, Profilversion und bisheriger Wert erneut geprüft. Laufende Antworten lassen sich abbrechen; Modellstatus, Modellname und ursprünglicher Messkontext bleiben sichtbar. Modell-HTML wird maskiert; nur Fettmarkierungen und einfache Überschriften werden formatiert. Einrichtung und Offlinebetrieb sind in [backend/ASSISTANT.md](../backend/ASSISTANT.md) beschrieben.
 
 ## Tests
 

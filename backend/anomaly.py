@@ -115,13 +115,13 @@ def validate_config(body, current):
             cfg[k] = bool(v)
         elif k in ("hard_min", "hard_max", "reject_z", "label_match_radius"):
             cfg[k] = None if v in (None, "") else float(v)
+            if k == "label_match_radius" and cfg[k] is not None and not 0.5 <= cfg[k] <= 500:
+                raise ValueError("label_match_radius must be between 0.5 and 500 (or empty for automatic)")
         elif k == "error_file":
             v = str(v).strip()
             if not v.endswith(".jsonl"):
                 raise ValueError("error_file must end in .jsonl")
             cfg[k] = v
-        elif k == "label_match_radius" and cfg[k] is not None and not 0.5 <= cfg[k] <= 500:
-            raise ValueError("label_match_radius must be between 0.5 and 500 (or empty for automatic)")
         else:
             lo, hi = LIMITS[k]
             x = int(v) if k == "consecutive" else float(v)

@@ -16,6 +16,7 @@ function productionFunction(startMarker, endMarker) {
 const switchSource = productionFunction('function switchSensor(', '\nasync function verifyBackend');
 const finishSource = productionFunction('function finishRecord(', '\nfunction saveRecording');
 const interruptSource = productionFunction('function interruptRecord(', '\nfunction useDemo');
+const interruptionMarkerSource = productionFunction('function markInterruption(', '\nfunction chartStatus');
 const dataSource = await readFile(new URL('../dist/data.js', import.meta.url), 'utf8');
 const engine = await import(`data:text/javascript;base64,${Buffer.from(dataSource).toString('base64')}`);
 
@@ -32,7 +33,7 @@ function harness() {
   engine.useSensor('ild1900');
   const values = [], updates = [], renders = [], failures = [], events = [];
   let interruptions = 0, clock = 0;
-  const rt = { bridgeUrl: 'ws://localhost:8000/ws/stream', record: null, socket: null, window: 30 };
+  const rt = { bridgeUrl: 'ws://localhost:8000/ws/stream', record: null, socket: null, window: 30, points: [], elapsed: 0, breaks: [], channelBreak: false };
   const snapshot = () => ({ led: { ...rt.led }, invalidSignal: rt.invalidSignal });
   class TestSocket { close() {} }
   const context = vm.createContext({
@@ -68,7 +69,7 @@ function harness() {
     verifyBackend() { throw new Error('identified native frames must not require another request'); },
     refreshBackend() { throw new Error('streaming frames must not trigger source discovery'); },
   });
-  vm.runInContext([finishSource, interruptSource, switchSource, connectionSource].join('\n'), context);
+  vm.runInContext([finishSource, interruptSource, interruptionMarkerSource, switchSource, connectionSource].join('\n'), context);
   const interrupt = vm.runInContext('interruptRecord', context);
   context.interruptRecord = () => {
     interruptions++;

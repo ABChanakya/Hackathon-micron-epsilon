@@ -209,7 +209,7 @@ export function mountFactoryPlan(parent, { selectSensor, onAlarm = () => {}, ope
   }
 
   // ---- switching between plan and grid ---------------------------------------------------------
-  function setMode(next, focusStation) {
+  function setMode(next, focusStation, moveFocus = true) {
     mode = next;
     viewport.hidden = next !== 'map';
     grid.hidden = next !== 'grid';
@@ -219,10 +219,10 @@ export function mountFactoryPlan(parent, { selectSensor, onAlarm = () => {}, ope
     if (next === 'grid') {
       loadModels();
       const target = modules.find(module => module.station === focusStation);
-      (target?.box.querySelector('.factory-tile') ?? grid).focus({ preventScroll: true });
+      if (moveFocus) (target?.box.querySelector('.factory-tile') ?? grid).focus({ preventScroll: true });
     } else {
       renderMap();
-      viewport.focus({ preventScroll: true });
+      if (moveFocus) viewport.focus({ preventScroll: true });
     }
     update();
   }
@@ -367,7 +367,7 @@ export function mountFactoryPlan(parent, { selectSensor, onAlarm = () => {}, ope
     toggle.firstElementChild.textContent = open ? 'Fabrikplan ausblenden' : 'Fabrikplan anzeigen';
     if (open) {
       if (!floor.getAttribute('src')) floor.src = new URL('./grundriss.svg', import.meta.url);
-      setMode(mode);
+      setMode(mode, null, false);            // opening the plan does not take the keyboard focus
     }
   });
   parent.append(section);

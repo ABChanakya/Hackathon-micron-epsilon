@@ -1,3 +1,5 @@
+import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=ui-review-3';
+import {cockpitUrl} from './navigation.mjs';
 import { chartData, describeError } from './recordings.mjs';
 import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs?v=fixed-sections';
 import { createLiveView } from './live-view.mjs';
@@ -10,8 +12,9 @@ const plot = byId('plot');
 const canvas = byId('trace');
 const axisLabels = [...byId('y-labels').children];
 const picker = byId('dataset');
-const number = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-const sectionTime = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 });
+const number = {format: value => new Intl.NumberFormat(getLocale(), {minimumFractionDigits: 3, maximumFractionDigits: 3}).format(value)};
+const tr = (text, values = {}) => translateText(text).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? '{' + key + '}');
+const sectionTime = {format: value => new Intl.NumberFormat(getLocale(), {maximumFractionDigits: 3}).format(value)};
 const clock = () => performance.now() / 1_000;
 const speechSupported = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 
@@ -19,7 +22,11 @@ let activeDataset = DEMO_DATASETS[0];
 let openedAt = clock();
 let pausedAt = null;
 let voiceEnabled = false;
+let activeLive = false;
+let backendPort = 8000;
+let liveStatus = {label: 'Verbinde mit dem Messserver …', state: 'loading'};
 let wasSensorPlaying = false;
+let clearFactorySelection = () => {};
 const sensorDemo = createSensorDemo({ clock, onChange: drawChart });
 const sensorOption = new Option('', 'factory-sensor');
 const initialTraceLabel = canvas.getAttribute('aria-label');
@@ -33,7 +40,7 @@ function formatTime(seconds) {
 
 function speak(text) {
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'de-DE';
+  utterance.lang = getLocale();
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
 }
@@ -68,7 +75,7 @@ function showSensorProfile(window, profile) {
   const period = byId('sensor-period');
   period.hidden = false;
   if (period.textContent !== range) period.textContent = range;
-  const source = 'Demo-Wiedergabe · Abstand prüfen · ' + DEMO_RATE + ' simulierte Messwerte pro Sekunde';
+  const source = [tr('Demo-Wiedergabe'), tr('Abstand prüfen'), tr('{rate} simulierte Messwerte pro Sekunde', {rate: DEMO_RATE})].join(' · ');
   if (byId('demo-source').textContent !== source) byId('demo-source').textContent = source;
   const label = 'Demo-Wiedergabe des Abstands in Millimetern, ' + range;
   if (canvas.getAttribute('aria-label') !== label) canvas.setAttribute('aria-label', label);
@@ -80,14 +87,15 @@ function drawSensor() {
   const frame = sensorDemo.frame();
   wasSensorPlaying = frame?.playing ?? false;
   const badge = byId('demo-state');
-  let badgeText = status;
+  let badgeText = tr(status);
   let badgeState = statusType;
-  if (frame?.ended) { badgeText = 'Wiedergabe beendet'; badgeState = ''; }
-  else if (frame?.sample.value === null) { badgeText = 'Messlücke · ' + describeError(frame.sample.code); badgeState = 'invalid'; }
-  else if (frame?.playing) { badgeText = 'Wiedergabe läuft'; badgeState = 'valid'; }
-  else if (frame) { badgeText = 'Wiedergabe pausiert'; badgeState = 'paused'; }
+  if (frame?.ended) { badgeText = tr('Wiedergabe beendet'); badgeState = ''; }
+  else if (frame?.sample.value === null) { badgeText = tr('Messlücke') + ' · ' + tr(describeError(frame.sample.code)); badgeState = 'invalid'; }
+  else if (frame?.playing) { badgeText = tr('Wiedergabe läuft'); badgeState = 'valid'; }
+  else if (frame) { badgeText = tr('Wiedergabe pausiert'); badgeState = 'paused'; }
   if (badge.textContent !== badgeText) badge.textContent = badgeText;
   badge.dataset.state = badgeState;
+  updateCompactStatus();
 
   byId('demo-pause').hidden = !frame;
   byId('sensor-restart').hidden = !frame;
@@ -98,7 +106,7 @@ function drawSensor() {
   byId('demo-limits').hidden = true;
   const recording = sensorDemo.recording;
   byId('demo-gaps').hidden = recording.invalidCount === 0;
-  byId('demo-pause-label').textContent = frame.playing ? 'Anzeige pausieren' : frame.ended ? 'Erneut abspielen' : 'Fortsetzen';
+  byId('demo-pause-label').textContent = tr(frame.playing ? 'Anzeige pausieren' : frame.ended ? 'Erneut abspielen' : 'Fortsetzen');
   byId('pause-icon').toggleAttribute('hidden', !frame.playing);
   byId('resume-icon').toggleAttribute('hidden', frame.playing);
 
@@ -129,7 +137,7 @@ function drawSensor() {
 
 function showDataset() {
   wasSensorPlaying = false;
-  byId('demo-title').textContent = 'Abstand zum Objekt';
+  byId('demo-title').textContent = tr('Abstand zum Objekt');
   byId('sensor-location').hidden = true;
   byId('sensor-period').hidden = true;
   byId('sensor-restart').hidden = true;
@@ -138,24 +146,40 @@ function showDataset() {
   byId('demo-gaps').hidden = true;
   byId('chart').hidden = false;
   byId('demo-state').removeAttribute('role');
-  canvas.setAttribute('aria-label', initialTraceLabel);
-  byId('source-summary').textContent = 'Demodaten · ' + activeDataset.model;
+  canvas.setAttribute('aria-label', tr(initialTraceLabel));
+  byId('source-summary').textContent = tr('Demodaten · {model}', {model: activeDataset.model});
   byId('demo-unit').textContent = activeDataset.unit;
-  byId('demo-source').textContent = DEMO_RATE + ' simulierte Messwerte pro Sekunde';
+  byId('demo-source').textContent = tr('{rate} simulierte Messwerte pro Sekunde', {rate: DEMO_RATE});
   updatePauseButton();
+  drawChart();
+}
+
+function showSelectedSensor() {
+  const {sensor, dataset, name} = sensorDemo.selected;
+  sensorOption.textContent = [name, tr(sensor.name)].join(' · ');
+  if (!sensorOption.parentNode) picker.add(sensorOption);
+  picker.value = sensorOption.value;
+  const source = tr(dataset ? 'Demo-Wiedergabe' : sensor.file ? 'Demo-Aufzeichnung' : 'Sensor');
+  byId('source-summary').textContent = source + ' · ' + name;
+  byId('demo-title').textContent = name;
+  const location = byId('sensor-location');
+  location.textContent = [sensor.name, sensor.position, sensor.quantity].map(text => tr(text)).join(' · ');
+  location.hidden = false;
+  byId('demo-unit').textContent = dataset?.unit ?? sensor.unit;
   drawChart();
 }
 
 function updatePauseButton(profile) {
   const paused = profile ? !profile.playing : pausedAt !== null;
-  byId('demo-pause-label').textContent = paused ? 'Fortsetzen' : 'Anzeige pausieren';
+  byId('demo-pause-label').textContent = tr(paused ? 'Fortsetzen' : 'Anzeige pausieren');
   byId('pause-icon').toggleAttribute('hidden', paused);
   byId('resume-icon').toggleAttribute('hidden', !paused);
   const state = byId('demo-state');
-  const label = profile ? (paused ? 'Demo-Wiedergabe pausiert' : 'Demo-Wiedergabe')
-    : paused ? 'Anzeige pausiert' : 'Demoanzeige';
+  const label = tr(profile ? (paused ? 'Demo-Wiedergabe pausiert' : 'Demo-Wiedergabe')
+    : paused ? 'Demo · Anzeige pausiert' : 'Demoanzeige');
   if (state.textContent !== label) state.textContent = label;
   state.dataset.state = paused ? 'paused' : 'valid';
+  updateCompactStatus();
 }
 
 for (const dataset of DEMO_DATASETS) picker.add(new Option(dataset.name, dataset.id));
@@ -278,9 +302,13 @@ function paintChart(canvas, plot, recording, scale, { limits, monitorGrid = fals
 const liveView = createLiveView({
   paintChart,
   speakStatus: (message) => { if (voiceEnabled) speak(message); },
+  translate: tr, locale: getLocale,
+  onStatus: status => { liveStatus = status; updateCompactStatus(); },
 });
 
 function selectView(live) {
+  activeLive = live;
+  updateCompactStatus();
   byId('view-live').setAttribute('aria-pressed', String(live));
   byId('view-recorded').setAttribute('aria-pressed', String(!live));
   byId('recorded-view').hidden = live;
@@ -335,6 +363,7 @@ function updateDisplay() {
   root.toggleAttribute('data-color-safe', colorSafe);
   try {
     localStorage.setItem(preferenceKey, JSON.stringify({ fontSize, colorSafe, theme }));
+    localStorage.setItem('me-theme', theme);
   } catch {
     // Display preferences also work when storage is disabled.
   }
@@ -343,7 +372,9 @@ function updateDisplay() {
 }
 
 const preferences = readPreferences();
-byId('theme').value = preferences.theme === 'dark' ? 'dark' : 'light';
+let sharedTheme;
+try { sharedTheme = localStorage.getItem('me-theme'); } catch {}
+byId('theme').value = (sharedTheme === 'dark' || sharedTheme === 'light' ? sharedTheme : preferences.theme) === 'dark' ? 'dark' : 'light';
 byId('theme').addEventListener('change', updateDisplay);
 if (['standard', 'large', 'largest'].includes(preferences.fontSize)) {
   byId('font-size').value = preferences.fontSize;
@@ -359,7 +390,7 @@ byId('speech-unavailable').hidden = speechSupported;
 speech.addEventListener('change', () => {
   voiceEnabled = speechSupported && speech.checked;
   if (voiceEnabled) {
-    speak('Sprachausgabe aktiviert.');
+    speak(tr('Sprachausgabe aktiviert.'));
   } else if (speechSupported) {
     window.speechSynthesis.cancel();
   }
@@ -367,16 +398,64 @@ speech.addEventListener('change', () => {
 
 byId('open-settings').addEventListener('click', () => byId('settings-dialog').showModal());
 byId('open-help').addEventListener('click', () => byId('help-dialog').showModal());
+byId('connection-help').addEventListener('click', () => byId('help-dialog').showModal());
 
-const chartOnly = matchMedia('(orientation: landscape) and (max-height: 500px) and (max-width: 1100px)');
-chartOnly.addEventListener('change', ({ matches }) => {
-  if (matches) document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
+function updateCompactStatus() {
+  byId('compact-source').textContent = tr(activeLive ? 'Live-Daten' : 'Demodaten');
+  const status = activeLive ? liveStatus : sensorDemo.selected
+    ? {label: byId('demo-state').textContent, state: byId('demo-state').dataset.state}
+    : {label: pausedAt !== null ? 'Anzeige pausiert' : 'Demoanzeige', state: pausedAt !== null ? 'paused' : 'valid'};
+  byId('compact-state').textContent = tr(status.label);
+  byId('compact-state').dataset.state = status.state;
+}
+
+function updateCockpitLinks() {
+  for (const id of ['cockpit-link', 'live-cockpit-link', 'help-cockpit-link'])
+    byId(id).href = cockpitUrl(location.href, backendPort, getLanguage(), id === 'cockpit-link' ? 'monitor' : 'advanced');
+}
+
+async function refreshLanguage() {
+  await setLanguage(getLanguage());
+  byId('language-select').value = getLanguage();
+  for (const [index, dataset] of DEMO_DATASETS.entries()) picker.options[index].textContent = tr(dataset.name);
+  if (sensorDemo.selected) showSelectedSensor();
+  else showDataset();
+  liveView.refreshLanguage();
+  updateCompactStatus();
+  updateCockpitLinks();
+}
+for (const language of LANGUAGES) byId('language-select').add(new Option(language.name, language.code));
+byId('language-select').value = getLanguage();
+byId('language-select').addEventListener('change', async event => {
+  await setLanguage(event.target.value);
+  await refreshLanguage();
 });
+window.addEventListener('storage', async event => {
+  if (event.key === 'landing-lang') {
+    if (LANGUAGES.some(language => language.code === event.newValue)) await setLanguage(event.newValue);
+    await refreshLanguage();
+  } else if (event.key === 'me-theme' && ['light', 'dark'].includes(event.newValue)) {
+    byId('theme').value = event.newValue;
+    updateDisplay();
+  }
+});
+updateCockpitLinks();
+if (!/^\/handy(?:\/|$)/.test(location.pathname)) {
+  fetch('/monitor-config.json', {cache: 'no-store'}).then(response => response.ok ? response.json() : null).then(config => {
+    if (Number.isInteger(config?.backendPort) && config.backendPort >= 1 && config.backendPort <= 65535) {
+      backendPort = config.backendPort;
+      updateCockpitLinks();
+    }
+  }).catch(() => {});
+}
+await setLanguage(getLanguage());
+startTranslations();
+await refreshLanguage();
 
 new ResizeObserver(() => drawChart()).observe(plot);
 window.addEventListener('resize', () => drawChart());
 showDataset();
-const clearFactorySelection = mountFactoryPlan(byId('main'), {
+clearFactorySelection = mountFactoryPlan(byId('main'), {
   selectSensor(sensor) {
     if (sensor.live) {                       // the real sensor: show its live readings
       userChoseView = true;
@@ -388,18 +467,8 @@ const clearFactorySelection = mountFactoryPlan(byId('main'), {
     byId('demo-state').setAttribute('role', 'status');
     const dataset = DEMO_DATASETS.find(({ id }) => id === sensor.demoId);
     sensorDemo.open(sensor, dataset);
-    const { name } = sensorDemo.selected;
-    sensorOption.textContent = [name, sensor.name].join(' · ');
-    if (!sensorOption.parentNode) picker.add(sensorOption);
-    picker.value = sensorOption.value;
-    const source = dataset ? 'Demo-Wiedergabe' : sensor.file ? 'Demo-Aufzeichnung' : 'Sensor';
-    byId('source-summary').textContent = source + ' · ' + name;
+    showSelectedSensor();
     const title = byId('demo-title');
-    title.textContent = name;
-    const location = byId('sensor-location');
-    location.textContent = [sensor.name, sensor.position, sensor.quantity].join(' · ');
-    location.hidden = false;
-    byId('demo-unit').textContent = dataset?.unit ?? sensor.unit;
     selectView(false);
     title.focus({ preventScroll: true });
     byId('recorded-view').scrollIntoView({ block: 'start' });
