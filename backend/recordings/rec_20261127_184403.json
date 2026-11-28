@@ -1,0 +1,59 @@
+{
+  "file": "rec_20261127_184403.csv",
+  "label": "steps",
+  "notes": "step edges in and out of range",
+  "source": "serial-ild1420",
+  "info": {
+    "model": "ILD1420-50",
+    "serial": "15060171",
+    "range_mm": 50.0,
+    "smr_mm": 35,
+    "firmware": "000.018",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 2.0,
+    "averaging": {
+      "mode": "MEDIAN",
+      "depth": 9
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "order": [
+      "SHUTTER",
+      "COUNTER",
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "INTENSITY1",
+      "DIST1",
+      "STATE"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T18:44:03",
+  "stopped": "2026-11-27T18:44:23",
+  "duration_s": 20.0,
+  "samples": 39998,
+  "valid": 39731,
+  "errors": 267,
+  "errors_by_code": {
+    "6": 267
+  },
+  "dropped": 0,
+  "min_mm": 12.801098901098902,
+  "max_mm": 36.31076007326008,
+  "mean_mm": 20.602732,
+  "planned_duration_s": 20.0
+}

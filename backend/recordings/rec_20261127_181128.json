@@ -1,0 +1,59 @@
+{
+  "file": "rec_20261127_181128.csv",
+  "label": "real: static desk",
+  "notes": "",
+  "source": "serial-ild1420",
+  "info": {
+    "model": "ILD1420-50",
+    "serial": "15060171",
+    "range_mm": 50.0,
+    "smr_mm": 35,
+    "firmware": "000.018",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 2.0,
+    "averaging": {
+      "mode": "MEDIAN",
+      "depth": 9
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "order": [
+      "SHUTTER",
+      "COUNTER",
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "INTENSITY1",
+      "DIST1",
+      "STATE"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T18:11:28",
+  "stopped": "2026-11-27T18:11:31",
+  "duration_s": 3.021,
+  "samples": 6023,
+  "valid": 0,
+  "errors": 6023,
+  "errors_by_code": {
+    "6": 6023
+  },
+  "dropped": 0,
+  "min_mm": null,
+  "max_mm": null,
+  "mean_mm": null,
+  "planned_duration_s": 3.0
+}
