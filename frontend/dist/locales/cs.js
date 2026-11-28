@@ -473,5 +473,6 @@ export default {
   "Einmal piepen": "Jedno pípnutí",
   "Wiederholen, bis der Wert stabil ist": "Opakovat, dokud se hodnota neustálí",
   "Ton testen": "Vyzkoušet zvuk",
-  "Zähler zurücksetzen": "Vynulovat počítadlo"
+  "Zähler zurücksetzen": "Vynulovat počítadlo",
+  "Echte Aufnahmen abspielen": "Přehrát skutečné záznamy"
 };

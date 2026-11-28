@@ -472,5 +472,6 @@ export default {
   "Einmal piepen": "1回鳴らす",
   "Wiederholen, bis der Wert stabil ist": "値が安定するまで繰り返す",
   "Ton testen": "音をテスト",
-  "Zähler zurücksetzen": "カウンターをリセット"
+  "Zähler zurücksetzen": "カウンターをリセット",
+  "Echte Aufnahmen abspielen": "実際の記録を再生"
 };

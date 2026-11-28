@@ -473,5 +473,6 @@ export default {
   "Einmal piepen": "Un seul « pi-pi-pi »",
   "Wiederholen, bis der Wert stabil ist": "Répéter jusqu’à stabilisation",
   "Ton testen": "Tester le son",
-  "Zähler zurücksetzen": "Effacer le compteur"
+  "Zähler zurücksetzen": "Effacer le compteur",
+  "Echte Aufnahmen abspielen": "Lire les enregistrements réels"
 };

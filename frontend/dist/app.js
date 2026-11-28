@@ -71,7 +71,7 @@ function route(name){location.hash=name}
 
 function liveConnectionPanel(){
   if(rt.mode==='demo'||rt.connected)return '';
-  return `<section class="notice" aria-label="Datenquelle"><div class="notice-body"><strong>${rt.backendAvailable?'Datenquelle wählen':'Messserver verbinden'}</strong><p>${rt.backendAvailable?'Du kannst ohne Sensor üben oder einen echten Sensor anschließen.':'Starte den Messserver mit ./start.sh. Ohne Sensor kannst du „Demo“ im Verbindungsmenü wählen.'}</p>${rt.backendAvailable?`<div class="notice-actions">${rt.simAvailable?`<button type="button" class="btn compact" data-action="connect-simulator" ${rt.connecting?'disabled':''}>${icon('wave')} ${rt.connecting?'Wird gestartet …':'Simulator ohne Sensor'}</button>`:''}${rt.ports.length?`<div class="field"><label for="live-port">Sensoranschluss</label><select id="live-port">${rt.ports.map(p=>`<option value="${esc(p.sensor+'|'+p.port)}">${p.sensor==='thermo'?'thermoMETER UC':'optoNCDT'} · ${esc(p.port)}</option>`).join('')}</select></div><button type="button" class="btn compact" data-action="connect-sensor" ${rt.connecting?'disabled':''}>${icon('plug')} ${rt.connecting?'Wird verbunden …':'Sensor verbinden'}</button>`:'<span class="small">Kein USB-Sensoranschluss gefunden.</span>'}<button type="button" class="btn quiet compact" data-action="scan-sensors">${icon('reset')} Anschlüsse prüfen</button></div>`:''}</div></section>`;
+  return `<section class="notice" aria-label="Datenquelle"><div class="notice-body"><strong>${rt.backendAvailable?'Datenquelle wählen':'Messserver verbinden'}</strong><p>${rt.backendAvailable?'Du kannst ohne Sensor üben oder einen echten Sensor anschließen.':'Starte den Messserver mit ./start.sh. Ohne Sensor kannst du „Demo“ im Verbindungsmenü wählen.'}</p>${rt.backendAvailable?`<div class="notice-actions">${rt.simAvailable?`<button type="button" class="btn compact" data-action="connect-simulator" ${rt.connecting?'disabled':''}>${icon('wave')} ${rt.connecting?'Wird gestartet …':'Echte Aufnahmen abspielen'}</button>`:''}${rt.ports.length?`<div class="field"><label for="live-port">Sensoranschluss</label><select id="live-port">${rt.ports.map(p=>`<option value="${esc(p.sensor+'|'+p.port)}">${p.sensor==='thermo'?'thermoMETER UC':'optoNCDT'} · ${esc(p.port)}</option>`).join('')}</select></div><button type="button" class="btn compact" data-action="connect-sensor" ${rt.connecting?'disabled':''}>${icon('plug')} ${rt.connecting?'Wird verbunden …':'Sensor verbinden'}</button>`:'<span class="small">Kein USB-Sensoranschluss gefunden.</span>'}<button type="button" class="btn quiet compact" data-action="scan-sensors">${icon('reset')} Anschlüsse prüfen</button></div>`:''}</div></section>`;
 }
 
 async function backendRequest(path,options={},address=rt.bridgeUrl){
@@ -138,8 +138,13 @@ function useSensorSource(){
 async function connectSimulator(){
   if(rt.connecting||rt.record)return;
   const address=rt.bridgeUrl;rt.connecting=true;rt.connectionError='';render();
-  try{const status=await backendRequest('/api/status',{},address);if(status.status!=='streaming')await backendRequest('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sensor:'SIM'})},address);if(rt.mode==='bridge'&&address===rt.bridgeUrl)connectBridge(true)}
-  catch(error){rt.connectionError=`Der Simulator konnte nicht gestartet werden: ${error.message}`;reportIncident('simulator', 'Simulateur', rt.connectionError);render()}
+  try{const status=await backendRequest('/api/status',{},address);if(status.status!=='streaming'){
+    // No sensor: play back the real recordings we made with the ILD1900 (one take per material, looped).
+    // Only if there are none does the backend's artificial simulator step in.
+    const recordings=await backendRequest('/api/recordings',{},address).catch(()=>[]);
+    const files=recordings.filter(r=>r.file&&/^ILD1900/.test(r.info?.model||'')&&/median 9/.test(r.label||'')).map(r=>r.file).reverse();
+    await backendRequest('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(SENSOR.id==='ild1900'&&files.length?{sensor:'REPLAY',files,loop:true}:{sensor:'SIM'})},address)}if(rt.mode==='bridge'&&address===rt.bridgeUrl)connectBridge(true)}
+  catch(error){rt.connectionError=`Die Aufnahmen konnten nicht abgespielt werden: ${error.message}`;reportIncident('simulator', 'Wiedergabe', rt.connectionError);render()}
   finally{rt.connecting=false;render()}
 }
 

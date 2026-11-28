@@ -472,5 +472,6 @@ export default {
   "Einmal piepen": "한 번 울리기",
   "Wiederholen, bis der Wert stabil ist": "값이 안정될 때까지 반복",
   "Ton testen": "소리 테스트",
-  "Zähler zurücksetzen": "카운터 초기화"
+  "Zähler zurücksetzen": "카운터 초기화",
+  "Echte Aufnahmen abspielen": "실제 녹화 재생"
 };

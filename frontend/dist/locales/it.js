@@ -473,5 +473,6 @@ export default {
   "Einmal piepen": "Un solo bip",
   "Wiederholen, bis der Wert stabil ist": "Ripeti finché il valore è stabile",
   "Ton testen": "Prova suono",
-  "Zähler zurücksetzen": "Azzera contatore"
+  "Zähler zurücksetzen": "Azzera contatore",
+  "Echte Aufnahmen abspielen": "Riproduci registrazioni reali"
 };

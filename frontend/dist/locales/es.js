@@ -473,5 +473,6 @@ export default {
   "Einmal piepen": "Pitar una vez",
   "Wiederholen, bis der Wert stabil ist": "Repetir hasta que el valor sea estable",
   "Ton testen": "Probar sonido",
-  "Zähler zurücksetzen": "Restablecer contador"
+  "Zähler zurücksetzen": "Restablecer contador",
+  "Echte Aufnahmen abspielen": "Reproducir grabaciones reales"
 };

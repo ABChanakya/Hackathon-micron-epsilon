@@ -472,5 +472,6 @@ export default {
   "Einmal piepen": "Beep once",
   "Wiederholen, bis der Wert stabil ist": "Repeat till the value settles",
   "Ton testen": "Test the sound",
-  "Zähler zurücksetzen": "Reset counter"
+  "Zähler zurücksetzen": "Reset counter",
+  "Echte Aufnahmen abspielen": "Play the real recordin's"
 };

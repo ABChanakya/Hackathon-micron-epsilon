@@ -472,5 +472,6 @@ export default {
   "Einmal piepen": "响一次",
   "Wiederholen, bis der Wert stabil ist": "重复直到数值稳定",
   "Ton testen": "测试声音",
-  "Zähler zurücksetzen": "重置计数"
+  "Zähler zurücksetzen": "重置计数",
+  "Echte Aufnahmen abspielen": "播放真实录制数据"
 };
