@@ -47,7 +47,7 @@
   if (location.protocol === 'file:') { showStart(true); return; }
   if (document.querySelector('script[data-cockpit-entry]')) return;
   const entry = document.createElement('script');
-  entry.type = 'module'; entry.src = 'app.js?v=sensor-video-desktop-plan-1'; entry.dataset.cockpitEntry = '';
+  entry.type = 'module'; entry.src = 'app.js?v=phone-live-1'; entry.dataset.cockpitEntry = '';
   entry.onerror = () => showStart(false);
   // The application renders synchronously; a completed entry must have replaced the boot text.
   entry.onload = () => showStart(false);

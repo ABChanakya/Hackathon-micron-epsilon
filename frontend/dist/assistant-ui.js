@@ -1,6 +1,6 @@
 import {askQuestion, explainError, explainChart, parseParameterCommand, checkProposal, getAssistantStatus} from './assistant.js?v=local-ai-1';
 import {assistantText} from './assistant-i18n.js?v=local-ai-1';
-import {getLanguage, getLocale} from './i18n.js?v=desktop-plan-1';
+import {getLanguage, getLocale} from './i18n.js?v=phone-live-1';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const paths = {

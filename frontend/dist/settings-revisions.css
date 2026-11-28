@@ -28,3 +28,6 @@
 .settings-confirm p { line-height: 1.6; margin: 12px 0; }
 .settings-confirm .dialog-actions { margin-top: 22px; }
 @media (max-width: 600px) { .settings-layout > .panel { padding: 18px; } .settings-immediate, .settings-form .fields { grid-template-columns: minmax(0,1fr); gap: 18px; } .settings-status-grid { grid-template-columns: 1fr; } .settings-dirty { flex-basis: 100%; } }
+
+.phone-access { margin-top: 1rem; }
+.phone-access [data-phone-address] { overflow-wrap: anywhere; }

@@ -34,7 +34,7 @@ damit sie auch aus der letzten Reihe lesbar ist. Diagramme bleiben scharf, die W
 ### Handy-Ansicht
 
 Unter `/handy/`, im gleichen WLAN auch auf dem Handy (siehe [Handy-Ansicht](#gerätecheck-und-handy-ansicht)). Mit
-angeschlossenem Sensor öffnet sie direkt die Live-Daten.
+Tab **PC-Messung** zeigt sie den Messdatenstrom des Sensors am Rechner.
 
 | Hell | Gebäudeplan | Dunkel |
 |---|---|---|
@@ -121,16 +121,11 @@ Eine bereits aktive Backend-Verbindung wird beim Öffnen sofort angezeigt.
 ### Handy verbinden (optional)
 
 Handy und Rechner müssen im selben Netz sein, im WLAN oder über den Hotspot des Handys, mit dem sich der Rechner
-verbindet. Während der Messserver läuft, in einem zweiten Terminal:
-
-```sh
-python3 "frontend/Handy frontend/serve.py"
-```
-
-Dann auf dem Handy `http://<IP-Adresse des Rechners>:4174/` öffnen. Die IP-Adresse zeigt `ipconfig getifaddr en0`
-(macOS), `hostname -I` (Linux) oder `ipconfig` beim WLAN-Adapter (Windows). Fragt die Firewall, ob Python
-Verbindungen annehmen darf, erlaube es für private Netze. Das Handy kann nur lesen: Der Handy-Server gibt nur
-Messwerte und Gerätestatus weiter, keine Einstellungen.
+verbindet. `./start.sh` startet die Handy-Freigabe gleich mit und zeigt die Adresse im Terminal an
+(`Handy im gleichen WLAN: http://…:4174/`), ebenso das Cockpit unter **Einstellungen → Verbindung → Auf dem Handy
+öffnen**. Diese Adresse im Handy-Browser öffnen; die Ansicht startet auf **PC-Messung**. Fragt die Firewall, ob
+Python Verbindungen annehmen darf, erlaube es für private Netze. Das Handy kann nichts verstellen: Der Handy-Server
+gibt nur Messwerte und Gerätestatus weiter.
 Schritt für Schritt mit Bildern, Hotspot und QR-Code: [Handy-Ansicht](frontend/Handy%20frontend/README.md).
 
 ### Aktualisieren und Entfernen
@@ -263,9 +258,15 @@ Sensor, der Simulator oder eine Aufzeichnung ist. Das Ergebnis steht als `device
 unter `GET /api/device`. Monitor und Handy-Ansicht zeigen ein Gerät nur, wenn es geprüft ist und ein Layout dafür
 existiert (Abstand mit 3D-Sensor und LEDs, oder Temperatur); unbekannte oder widersprüchliche Geräte werden abgewiesen.
 
-Die Handy-Ansicht liegt in `frontend/Handy frontend/`. Am Rechner: http://127.0.0.1:8000/handy/. Auf dem Handy (gleiches
-WLAN): `python3 "frontend/Handy frontend/serve.py"` und die Adresse aus dem README dort öffnen. Der Handy-Server leitet
-nur `/api/status`, `/api/latest` und `/api/device` lesend an den Messserver weiter.
+Beim Start mit `./start.sh` erscheint im Terminal **Handy im gleichen WLAN** mit der aktuellen Adresse.
+Im Desktop-Cockpit findest du den Link unter **Einstellungen → Verbindung → Auf dem Handy öffnen**.
+Verbinde das Handy mit demselben WLAN wie den Sensor-PC und öffne die Adresse im Handy-Browser.
+**PC-Messung** startet automatisch und zeigt den Messdatenstrom des am PC aktiven Sensors. Am PC ist die mobile Ansicht auch unter
+http://127.0.0.1:8000/handy/ erreichbar.
+
+Läuft der Messserver bereits einzeln, starte zusätzlich `python3 "frontend/Handy frontend/serve.py"`.
+Für einen anderen Messserver-Port ergänze beispielsweise `--backend-port 8001`. Der Handy-Server stellt
+den Datenstrom und die Lesezugriffe auf Sensorstatus, Gerät und letzten Messwert bereit.
 
 ## Fabrikplan
 

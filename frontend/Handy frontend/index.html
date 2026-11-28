@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#ffffff">
   <title>Sensor Cockpit · Micro-Epsilon</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=ui-review-3">
-  <link rel="stylesheet" href="fabrikplan/fabrikplan.css?v=theme-live-2">
-  <script type="module" src="app.mjs?v=desktop-plan-live-1"></script>
+  <link rel="stylesheet" href="style.css?v=phone-live-1">
+  <link rel="stylesheet" href="fabrikplan/fabrikplan.css?v=theme-live-3">
+  <script type="module" src="app.mjs?v=phone-pc-plan-3"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Zum Inhalt</a>
@@ -22,22 +22,22 @@
         <button class="icon-button" type="button" id="open-settings" aria-label="Einstellungen öffnen" title="Einstellungen" aria-haspopup="dialog"><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.24 10.06 L21.88 10.44 L21.88 13.56 L19.24 13.94 L18.50 15.75 L20.09 17.88 L17.88 20.09 L15.75 18.50 L13.94 19.24 L13.56 21.88 L10.44 21.88 L10.06 19.24 L8.25 18.50 L6.12 20.09 L3.91 17.88 L5.50 15.75 L4.76 13.94 L2.12 13.56 L2.12 10.44 L4.76 10.06 L5.50 8.25 L3.91 6.12 L6.12 3.91 L8.25 5.50 L10.06 4.76 L10.44 2.12 L13.56 2.12 L13.94 4.76 L15.75 5.50 L17.88 3.91 L20.09 6.12 L18.50 8.25 Z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></svg></button>
         <button class="icon-button" type="button" id="open-help" aria-label="Hilfe öffnen" title="Hilfe" aria-haspopup="dialog"><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 8a3 3 0 1 1 5 2c-2 1-2 2-2 3 M12 17v.01 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0"/></svg></button>
       </div>
-      <div class="compact-monitor" aria-label="Messstatus"><span id="compact-source">Demodaten</span><span id="compact-state" class="status" data-state="valid">Demoanzeige</span></div>
+      <div class="compact-monitor" aria-label="Messstatus"><span id="compact-source">PC-Messung</span><span id="compact-state" class="status" data-state="loading">Verbinde mit dem Messserver …</span></div>
     </div>
   </header>
 
   <main id="main" class="monitor" tabindex="-1">
     <header class="page-heading">
       <h1>Sensor Cockpit</h1>
-      <p id="source-summary">Demodaten · optoNCDT 1900-10</p>
+      <p id="source-summary" hidden>Demodaten · optoNCDT 1900-10</p>
     </header>
 
     <nav class="source-tabs" aria-label="Datenquelle">
-      <button type="button" id="view-recorded" aria-pressed="true" aria-controls="recorded-view">Demodaten</button>
-      <button type="button" id="view-live" aria-pressed="false" aria-controls="live-view">Live-Daten</button>
+      <button type="button" id="view-live" aria-pressed="true" aria-controls="live-view">PC-Messung</button>
+      <button type="button" id="view-recorded" aria-pressed="false" aria-controls="recorded-view">Demodaten</button>
     </nav>
 
-    <div id="recorded-view">
+    <div id="recorded-view" hidden>
       <label class="select-field dataset-picker" for="dataset">
         Messprofil wählen
         <select id="dataset"></select>
@@ -84,11 +84,11 @@
       </section>
     </div>
 
-    <section class="detail-panel" id="live-view" aria-labelledby="live-title" hidden>
+    <section class="detail-panel" id="live-view" aria-labelledby="live-title">
       <header class="detail-header">
         <div>
-          <h2 id="live-title">Aktuelle Messung</h2>
-          <p class="detail-meta" id="live-model">Live-Messung</p>
+          <h2 id="live-title" tabindex="-1">Aktuelle Messung</h2>
+          <p class="detail-meta"><span id="live-model">Live-Messung</span> · <span id="live-source">PC-Messung</span></p>
         </div>
         <span class="status" id="live-state" role="status">Verbinde mit dem Messserver …</span>
       </header>
@@ -114,6 +114,17 @@
           <span class="legend-item"><span class="legend-trace" aria-hidden="true"></span>Messwert</span>
           <span class="legend-item" id="live-gap" hidden><span class="legend-gap" aria-hidden="true"></span>Messlücke</span>
         </figcaption>
+      </figure>
+      <figure id="live-slope-chart" aria-labelledby="live-slope-title" hidden>
+        <header class="detail-header"><h2 id="live-slope-title">Slope</h2><span id="live-slope-value">—</span></header>
+        <p class="chart-unit">Trend über 1 s</p>
+        <div class="chart-frame">
+          <div class="y-labels" id="live-slope-axis" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="plot" id="live-slope-plot">
+            <canvas role="img" aria-label="Slope-Diagramm: Änderung pro Sekunde über Zeit" id="live-slope-trace"></canvas>
+          </div>
+          <div class="x-labels" aria-hidden="true"><span>−15 s</span><span>Jetzt</span></div>
+        </div>
       </figure>
     </section>
 
@@ -152,7 +163,6 @@
         <li>Verbinde den Sensor am Rechner und öffne dort das Sensor Cockpit.</li>
         <li>Verbinde Handy und Rechner mit demselben Netzwerk.</li>
         <li>Wähle im Sensor Cockpit die Datenquelle und verbinde den Sensor.</li>
-        <li>Öffne auf dem Handy Live-Daten, um die Messung zu sehen.</li>
         <li>Die Desktop-Demo beginnt bei null und erzeugt fünf simulierte Messwerte pro Sekunde.</li>
         <li>Mit Anzeige pausieren hältst du den dargestellten Stand fest. Beim Fortsetzen springt die Anzeige ins aktuelle 30-Sekunden-Fenster.</li>
         <li>Unter Einstellungen kannst du Schriftgröße, farbsehfreundliche Farben und Sprachausgabe einstellen.</li>

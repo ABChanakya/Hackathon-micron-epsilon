@@ -1,16 +1,16 @@
 # Micro-Epsilon · Mobiles Sensor Cockpit
 
-Die Handy-Ansicht des Messplatzes: aktueller Messwert und Verlauf der letzten 30 Sekunden, Live-Daten des
-angeschlossenen Sensors und der Gebäudeplan mit Modulen und Alarmen. Sie läuft im Browser des Handys, ohne App.
+Die Handy-Ansicht des Messplatzes: die Messung des Sensors am Rechner (**PC-Messung**), Demodaten mit dem Verlauf
+der letzten 30 Sekunden und der Gebäudeplan mit Modulen und Alarmen. Sie läuft im Browser des Handys, ohne App.
 Das Handy liest nur: Einstellungen am Sensor oder am Messplatz lassen sich von hier aus nicht ändern.
 
 | Messansicht (hell) | Messansicht (dunkel) | Gebäudeplan |
 |---|---|---|
 | ![Handy-Ansicht hell: Abstand 25,002 mm und Messverlauf](../../docs/images/phone-light.png) | ![Handy-Ansicht dunkel](../../docs/images/phone-dark.png) | ![Gebäudeplan auf dem Handy, helles Farbschema](../../docs/images/phone-factory.png) |
 
-| Module mit Alarm | Live-Daten (hier ohne angeschlossenen Sensor) |
+| Module mit Alarm | PC-Messung (Wiedergabe echter ILD1900-Aufnahmen) |
 |---|---|
-| ![Modulansicht: Messkopf A der Materialbereitstellung blinkt rot im Alarm](../../docs/images/phone-modules.png) | ![Live-Daten-Tab: zeigt an, dass gerade kein Sensor misst](../../docs/images/phone-live.png) |
+| ![Modulansicht: Messkopf A der Materialbereitstellung blinkt rot im Alarm](../../docs/images/phone-modules.png) | ![Tab PC-Messung: 26,129 mm Abstand ab Sensorfront mit Verlauf der letzten 15 Sekunden](../../docs/images/phone-live.png) |
 
 ## Installieren und auf dem Handy öffnen
 
@@ -22,28 +22,32 @@ Die Handy-Ansicht gehört zum Messplatz und wird mit ihm installiert. Auf dem Ha
    mit dem **Hotspot des Handys** (Handy: Einstellungen → Persönlicher Hotspot bzw. Mobiler Hotspot einschalten;
    Rechner: dieses WLAN auswählen). Der Hotspot ist der sichere Weg, wenn das WLAN Geräte voneinander trennt, wie
    eduroam und viele Gäste-WLANs. Für die Verbindung zwischen Handy und Rechner verbraucht er kein Datenvolumen.
-3. **Handy-Server starten**, in einem zweiten Terminal im Programmordner, während der Messplatz läuft:
+3. **Adresse ablesen.** `./start.sh` startet die Handy-Freigabe gleich mit und schreibt die Adresse ins Terminal:
 
-   ```sh
-   python3 "frontend/Handy frontend/serve.py"
+   ```
+   Micro-Epsilon Live-Monitor: http://127.0.0.1:8000/
+   Handy im gleichen WLAN: http://172.20.10.3:4174/
    ```
 
-   Unter Windows: `py "frontend\Handy frontend\serve.py"`. Fragt die Firewall, ob Python Verbindungen annehmen darf,
-   für private Netze erlauben.
-4. **IP-Adresse des Rechners herausfinden:**
-
-   | System | Befehl | Typische Adresse im Handy-Hotspot |
-   |---|---|---|
-   | macOS | `ipconfig getifaddr en0` | iPhone: `172.20.10.x`, Android: `192.168.x.x` |
-   | Linux | `hostname -I` (erste Adresse) | wie oben |
-   | Windows | `ipconfig`, Zeile „IPv4-Adresse“ beim WLAN-Adapter | wie oben |
-
-5. **Auf dem Handy öffnen:** `http://<IP-Adresse>:4174/`, also zum Beispiel `http://172.20.10.3:4174/`. Wichtig sind
-   `http://` (nicht `https://`) und der Port `:4174`.
+   Dieselbe Adresse steht im Cockpit unter **Einstellungen → Verbindung → Auf dem Handy öffnen**. Fragt die Firewall,
+   ob Python Verbindungen annehmen darf, für private Netze erlauben.
+4. **Auf dem Handy öffnen:** die Adresse im Handy-Browser eintippen. Wichtig sind `http://` (nicht `https://`) und
+   der Port, meist `:4174` (ist er belegt, nimmt der Server einen freien und zeigt diesen an). Die Ansicht startet
+   auf **PC-Messung** und zeigt denselben Messdatenstrom wie das Cockpit, mit Modell, Messwert und Einheit.
 
    Für einen QR-Code: die Adresse am Rechner im Browser öffnen, dann in Chrome **Menü ⋮ → Streamen, speichern und
-   teilen → QR-Code erstellen** bzw. in Edge das QR-Symbol in der Adressleiste; das Handy scannt ihn mit der Kamera. Der mitgelieferte `handy-qr.png` enthält eine feste
-   Adresse aus einem früheren WLAN und passt nur dort.
+   teilen → QR-Code erstellen** bzw. in Edge das QR-Symbol in der Adressleiste; das Handy scannt ihn mit der Kamera.
+5. **Beenden:** **Strg+C** im Terminal beendet Messplatz und Handy-Freigabe zusammen.
+
+Läuft der Messplatz schon ohne Handy-Freigabe (etwa von Hand gestartet), lässt sie sich einzeln starten:
+`python3 "frontend/Handy frontend/serve.py"` (Windows: `py "frontend\Handy frontend\serve.py"`). Wird keine Adresse
+angezeigt, findest du die IP-Adresse des Rechners selbst:
+
+| System | Befehl | Typische Adresse im Handy-Hotspot |
+|---|---|---|
+| macOS | `ipconfig getifaddr en0` | iPhone: `172.20.10.x`, Android: `192.168.x.x` |
+| Linux | `hostname -I` (erste Adresse) | wie oben |
+| Windows | `ipconfig`, Zeile „IPv4-Adresse“ beim WLAN-Adapter | wie oben |
 
 Am Rechner selbst ist die Handy-Ansicht ohne zweiten Server unter http://127.0.0.1:8000/handy/ erreichbar.
 
@@ -52,9 +56,10 @@ Am Rechner selbst ist die Handy-Ansicht ohne zweiten Server unter http://127.0.0
 | Problem | Lösung |
 |---|---|
 | Seite lädt ewig oder „nicht erreichbar“ | Rechner und Handy im selben Netz? Im Hotspot muss der **Rechner** mit dem Handy verbunden sein. Im Uni- oder Gäste-WLAN den Hotspot nutzen |
+| Terminal zeigt „Keine WLAN-Adresse gefunden“ | Rechner ist mit keinem Netz verbunden; mit WLAN oder Handy-Hotspot verbinden und neu starten |
 | Seite lädt, aber „Messserver nicht erreichbar“ | läuft `./start.sh` noch? Der Handy-Server leitet nur weiter und braucht den Messplatz auf Port 8000 |
 | Messplatz läuft auf einem anderen Port | `python3 "frontend/Handy frontend/serve.py" --backend-port 8001` |
-| Port 4174 ist belegt | `python3 "frontend/Handy frontend/serve.py" --port 4175`, dann `http://<IP>:4175/` öffnen |
+| Fester Handy-Port gewünscht | `python3 "frontend/Handy frontend/serve.py" --port 4180`, dann `http://<IP>:4180/` öffnen |
 | Firewall-Abfrage verpasst | macOS: Systemeinstellungen → Netzwerk → Firewall → Optionen, Python erlauben. Windows: Windows-Sicherheit → Firewall → App zulassen |
 | Alte Ansicht nach einem Update | Seite auf dem Handy neu laden; hilft das nicht, die Browserdaten der Seite löschen |
 
@@ -63,8 +68,8 @@ Am Rechner selbst ist die Handy-Ansicht ohne zweiten Server unter http://127.0.0
 **Demodaten.** Ohne Sensor läuft das Standardprofil „Abstand prüfen“ aus dem Cockpit: dieselbe Formel simuliert fünf
 Abstandswerte pro Sekunde um 25 mm, lokal im Browser. Im Dropdown steht derzeit dieser eine Datensatz.
 
-**Live-Daten.** Ist am Rechner ein Sensor verbunden und geprüft, öffnet die Ansicht direkt den Tab **Live-Daten**:
-Sensor, aktueller Messwert und Verlauf der letzten 15 Sekunden. Fällt der Server oder der Sensor kurz aus, fragt die
+**PC-Messung.** Die Ansicht öffnet auf dem Tab **PC-Messung** und zeigt den Messdatenstrom des Sensors am Rechner:
+Modell, aktueller Messwert, Einheit und Verlauf. Fällt der Server oder der Sensor kurz aus, fragt die
 Ansicht selbst erneut nach. Sie zeigt nur Geräte, die der Gerätecheck des Messplatzes bestätigt hat.
 
 **Gebäudeplan: Plan und Module.** Unter **Gebäudeplan anzeigen** zeigt die Gesamtansicht den Hallenplan mit den
@@ -92,18 +97,20 @@ Messgraph den Bildschirm; beim Zurückdrehen erscheinen die Bedienelemente wiede
 ```mermaid
 flowchart LR
   H[Handy-Browser] -- http, Port 4174 --> P[serve.py<br/>Handy-Server]
-  P -- nur lesend: /api/status, /api/latest, /api/device --> B[Messplatz<br/>127.0.0.1:8000]
+  P -- /api/status, /api/latest, /api/device, /ws/stream --> B[Messplatz<br/>127.0.0.1:8000]
   S[Sensor] -- USB --> B
 ```
 
-`serve.py` liefert die Dateien dieses Ordners aus und leitet genau drei lesende Anfragen an den Messplatz weiter.
+`serve.py` liefert die Dateien dieses Ordners aus und leitet an den Messplatz nur weiter: die drei lesenden Anfragen
+`/api/status`, `/api/latest`, `/api/device` und den Messdatenstrom `/ws/stream`.
 Der Messplatz selbst bleibt nur am Rechner erreichbar (`127.0.0.1`), sodass niemand im Netz Sensor oder Einstellungen
-ändern kann. Optionen: `--bind` (Standard `0.0.0.0`), `--port` (Standard `4174`), `--backend-port` (Standard `8000`).
+ändern kann. Optionen: `--bind` (Standard `0.0.0.0`), `--port` (Standard `4174`, sonst ein freier), `--backend-port` (Standard
+`8000`); `./start.sh` ruft ihn mit `--with-backend` auf und startet so beide Dienste in einem Prozess.
 
 | Datei | Inhalt |
 |---|---|
 | `index.html`, `app.mjs`, `style.css` | Seite, Bedienung, Darstellung |
-| `live-view.mjs`, `live-data.mjs` | Tab Live-Daten |
+| `live-view.mjs`, `live-data.mjs` | Tab PC-Messung |
 | `demo.mjs`, `recordings.mjs` | Demodaten und Wiedergabe von Aufnahmen |
 | `fabrikplan/` | Gebäudeplan, Module, Live-Modul, Simulation (auch vom Cockpit am Rechner verwendet) |
 | `serve.py` | Handy-Server |

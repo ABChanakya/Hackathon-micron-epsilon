@@ -60,9 +60,9 @@ function harness() {
     announce() {},
     render() { renders.push(snapshot()); },
     updateLive() { updates.push(snapshot()); },
-    addValue(value, { led }) {
+    addValue(value, { led, elapsed }) {
       values.push(value); rt.value = value; rt.led = led;
-      rt.points.push({ value, unit: engine.SENSOR.unit });
+      rt.points.push({ t: elapsed, value, unit: engine.SENSOR.unit });
     },
     disconnectSocket() { rt.socket?.close(); rt.socket = null; },
     connectionFailed(message) { failures.push(message); },
@@ -186,4 +186,14 @@ test('pausing distance display keeps live LED state updates active', async () =>
   assert.deepEqual(h.updates.at(-1).led, { state: 'yellow', output: 'green' });
   assert.equal(h.interruptions, 0);
   assert.deepEqual(h.failures, []);
+});
+
+test('native distance and slope use frame spacing regardless of browser delivery time', async () => {
+  const h = harness();
+  await h.send(frame({t: 10000, dist_from_face_mm: 25}));
+  await h.send(frame({t: 10000.125, dist_from_face_mm: 25.25}));
+  await h.send(frame({t: 10000.125, dist_from_face_mm: 25.25}));
+  await h.send(frame({t: 10000.5, dist_from_face_mm: 26}));
+  assert.deepEqual(Array.from(h.rt.points, point => point.t), [0, 0.125, 0.5]);
+  assert.deepEqual(h.values, [25, 25.25, 26]);
 });

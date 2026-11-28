@@ -1,9 +1,10 @@
-import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=desktop-plan-1';
+import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=phone-live-1';
 import {cockpitUrl} from './navigation.mjs';
 import { chartData, describeError } from './recordings.mjs';
 import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs?v=fixed-sections';
-import { createLiveView } from './live-view.mjs';
-import { mountFactoryPlan } from './fabrikplan/karte.mjs';
+import { createLiveView } from './live-view.mjs?v=phone-pc-1';
+import { buildSlopeSeries } from '/measurement-series.js?v=slope-1';
+import { mountFactoryPlan } from './fabrikplan/karte.mjs?v=theme-live-1';
 import { createSensorDemo, recordingSection } from './fabrikplan/sensor-demo.mjs';
 
 const byId = (id) => document.getElementById(id);
@@ -22,7 +23,7 @@ let activeDataset = DEMO_DATASETS[0];
 let openedAt = clock();
 let pausedAt = null;
 let voiceEnabled = false;
-let activeLive = false;
+let activeLive = true;
 let backendPort = 8000;
 let liveStatus = {label: 'Verbinde mit dem Messserver …', state: 'loading'};
 let wasSensorPlaying = false;
@@ -300,7 +301,12 @@ function paintChart(canvas, plot, recording, scale, { limits, monitorGrid = fals
 }
 
 const liveView = createLiveView({
-  paintChart,
+  paintChart, buildSlopeSeries,
+  openStream() {
+    const url = new URL('/ws/stream', location.href);
+    url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return new WebSocket(url);
+  },
   speakStatus: (message) => { if (voiceEnabled) speak(message); },
   translate: tr, locale: getLocale,
   onStatus: status => { liveStatus = status; updateCompactStatus(); },
@@ -323,25 +329,8 @@ function selectView(live) {
     drawChart();
   }
 }
-byId('view-live').addEventListener('click', () => { userChoseView = true; selectView(true); });
-byId('view-recorded').addEventListener('click', () => { userChoseView = true; selectView(false); });
-
-// With a real sensor connected the page opens on its live readings, not on demo data, and switches over when one is
-// connected later, until the person picks a tab themselves.
-let userChoseView = false;
-async function followLiveSensor() {
-  if (userChoseView) return;
-  try {
-    const response = await fetch('/api/status', { cache: 'no-store' });
-    const status = response.ok ? await response.json() : null;
-    const live = status?.status === 'streaming' && status.device?.live === true && status.device.verified === true;
-    if (live && byId('live-view').hidden) selectView(true);
-  } catch {
-    // no measuring server: stay on the demo
-  }
-}
-followLiveSensor();
-setInterval(followLiveSensor, 3000);
+byId('view-live').addEventListener('click', () => selectView(true));
+byId('view-recorded').addEventListener('click', () => selectView(false));
 
 const preferenceKey = 'micro-epsilon-mobile-display';
 function readPreferences() {
@@ -401,7 +390,7 @@ byId('open-help').addEventListener('click', () => byId('help-dialog').showModal(
 byId('connection-help').addEventListener('click', () => byId('help-dialog').showModal());
 
 function updateCompactStatus() {
-  byId('compact-source').textContent = tr(activeLive ? 'Live-Daten' : 'Demodaten');
+  byId('compact-source').textContent = tr(activeLive ? liveStatus.sourceLabel || 'PC-Messung' : 'Demodaten');
   const status = activeLive ? liveStatus : sensorDemo.selected
     ? {label: byId('demo-state').textContent, state: byId('demo-state').dataset.state}
     : {label: pausedAt !== null ? 'Anzeige pausiert' : 'Demoanzeige', state: pausedAt !== null ? 'paused' : 'valid'};
@@ -454,13 +443,12 @@ await refreshLanguage();
 
 new ResizeObserver(() => drawChart()).observe(plot);
 window.addEventListener('resize', () => drawChart());
-showDataset();
+if (activeLive) selectView(true);
 clearFactorySelection = mountFactoryPlan(byId('main'), {
   selectSensor(sensor) {
-    if (sensor.live) {                       // the real sensor: show its live readings
-      userChoseView = true;
-      sensorDemo.clear();
+    if (sensor.live) {
       selectView(true);
+      byId('live-title').focus({ preventScroll: true });
       byId('live-view').scrollIntoView({ block: 'start' });
       return;
     }

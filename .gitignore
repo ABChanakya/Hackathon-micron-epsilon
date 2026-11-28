@@ -2,3 +2,6 @@
 __pycache__/
 ~$*
 /.runtime/
+
+# WLAN address published by the running mobile relay.
+/frontend/dist/phone-access-*.json

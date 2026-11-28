@@ -2,10 +2,10 @@ import {createDesktopFactoryPlan} from './factory-plan.js?v=building-plan-live-1
 import {pdfText} from './pdf-i18n.js?v=ui-review-3';
 import {SENSOR, DISPLAY_RATE, createInitialState, loadState, saveState, makeDemoPoints, acceptFeedback, acceptRange, fitToTraining, undoLearning, resetLearning, exportRecordingCSV, exportReportPDF, statistics, slicePoints, formatDuration, generateId, matchesBackendSensor, parseBridgeSample, bridgeLedState, useSensor, sensorFromStatus, adoptSensor, unitOf} from './data.js?v=ui-review-3';
 import {buildSlopeSeries} from './measurement-series.js?v=slope-1';
-import {LANGUAGES, getLanguage, getLocale, setLanguage, applyTranslations, startTranslations} from './i18n.js?v=desktop-plan-1';
-import {createAssistantUI} from './assistant-ui.js?v=local-ai-1';
+import {LANGUAGES, getLanguage, getLocale, setLanguage, applyTranslations, startTranslations} from './i18n.js?v=phone-live-1';
+import {createAssistantUI} from './assistant-ui.js?v=phone-live-1';
 import {assistantText} from './assistant-i18n.js?v=ui-review-3';
-import {installHints, announce} from './hints.js?v=hints-3';
+import {installHints, announce} from './hints.js?v=phone-live-2';
 import {createSettingsDraftStore,readSettingsForm,restoreSettingsForm,validateProfileFields,validateProfileSettings,validateConnectionSettings,validateMlSettings,mlSettingsValues,mlOperatingState,mlEventTime,ML_FIELD_LIMITS} from './settings-revisions.js?v=settings-2';
 
 // The 3D sensor view is only for devices whose data call for it: a verified distance sensor (backend device check:
@@ -93,9 +93,17 @@ const ledLabel=value=>({green:'Grün',yellow:'Gelb',red:'Rot',off:'Aus',unknown:
 function ledMeaning(name,value){return({state:{green:'Das Objekt liegt im Messbereich des Sensors.',yellow:'Das Objekt befindet sich in der Messbereichsmitte.',red:'Kein gültiger Abstand. Prüfe den Messbereich und die reflektierende Oberfläche.',off:'Der Laser ist ausgeschaltet.',unknown:'Der Sensorstatus ist nicht verfügbar.'},output:{green:'RS422 ist aktiv. Der Analogausgang ist aus.',yellow:'Die Schaltausgänge sind aktiv. RS422, Analogausgang oder Webinterface können zugeschaltet werden.',red:'Der Analogausgang ist aktiv: 4–20 mA, 0–5 V oder 0–10 V.',off:'Der Sensor ist ausgeschaltet oder ohne Versorgung.',unknown:'Der Ausgabestatus ist nicht verfügbar.'}})[name][value]}
 function route(name){location.hash=name}
 
+function hardwareControls(replacePlayback = false) {
+  return `${rt.ports.length?`<div class="field"><label for="live-port">Sensoranschluss</label><select id="live-port" data-replace-playback="${replacePlayback}">${rt.ports.map(p=>`<option value="${esc(p.sensor+'|'+p.port)}">${p.sensor==='thermo'?'thermoMETER UC':'optoNCDT'} · ${esc(p.port)}</option>`).join('')}</select></div><button type="button" class="btn compact" data-action="connect-sensor" ${rt.connecting||rt.record||rt.saving?'disabled':''}>${icon('plug')} ${rt.connecting?'Wird verbunden …':'Sensor verbinden'}</button>`:'<span class="small">Kein USB-Sensoranschluss gefunden.</span>'}<button type="button" class="btn quiet compact" data-action="scan-sensors">${icon('reset')} Anschlüsse prüfen</button>`;
+}
+
 function liveConnectionPanel(){
-  if(rt.mode==='demo'||rt.connected)return '';
-  return `<section class="notice" aria-label="Datenquelle"><div class="notice-body"><strong>${rt.backendAvailable?'Datenquelle wählen':'Messserver verbinden'}</strong><p>${rt.backendAvailable?'Du kannst ohne Sensor üben oder einen echten Sensor anschließen.':'Starte den Messserver mit ./start.sh. Ohne Sensor kannst du „Demo“ im Verbindungsmenü wählen.'}</p>${rt.backendAvailable?`<div class="notice-actions">${rt.simAvailable?`<button type="button" class="btn compact" data-action="connect-simulator" ${rt.connecting?'disabled':''}>${icon('wave')} ${rt.connecting?'Wird gestartet …':'Echte Aufnahmen abspielen'}</button>`:''}${rt.ports.length?`<div class="field"><label for="live-port">Sensoranschluss</label><select id="live-port">${rt.ports.map(p=>`<option value="${esc(p.sensor+'|'+p.port)}">${p.sensor==='thermo'?'thermoMETER UC':'optoNCDT'} · ${esc(p.port)}</option>`).join('')}</select></div><button type="button" class="btn compact" data-action="connect-sensor" ${rt.connecting?'disabled':''}>${icon('plug')} ${rt.connecting?'Wird verbunden …':'Sensor verbinden'}</button>`:'<span class="small">Kein USB-Sensoranschluss gefunden.</span>'}<button type="button" class="btn quiet compact" data-action="scan-sensors">${icon('reset')} Anschlüsse prüfen</button></div>`:''}</div></section>`;
+  if (rt.mode === 'demo') return '';
+  if (rt.connected) {
+    if (rt.route !== 'advanced' || !['sim', 'replay'].includes(rt.backendStatus?.source)) return '';
+    return `<div class="notice-actions">${hardwareControls(true)}</div>`;
+  }
+  return `<section class="notice" aria-label="Datenquelle"><div class="notice-body"><strong>${rt.backendAvailable?'Datenquelle wählen':'Messserver verbinden'}</strong><p>${rt.backendAvailable?'Du kannst ohne Sensor üben oder einen echten Sensor anschließen.':'Starte den Messserver mit ./start.sh. Ohne Sensor kannst du „Demo“ im Verbindungsmenü wählen.'}</p>${rt.backendAvailable?`<div class="notice-actions">${rt.simAvailable?`<button type="button" class="btn compact" data-action="connect-simulator" ${rt.connecting?'disabled':''}>${icon('wave')} ${rt.connecting?'Wird gestartet …':'Echte Aufnahmen abspielen'}</button>`:''}${hardwareControls()}</div>`:''}</div></section>`;
 }
 
 async function backendRequest(path,options={},address=rt.bridgeUrl){
@@ -132,7 +140,9 @@ async function refreshBackend(attach=false){
 
 async function connectSensor(){
   if(rt.connecting||rt.record)return;
-  const selection=$('#live-port')?.value;
+  const selector = $('#live-port');
+  const selection = selector?.value;
+  const replacePlayback = selector?.dataset?.replacePlayback === 'true';
   if(!selection)return;
   const selectedSource=(rt.ports||[]).find(item=>item.sensor+'|'+item.port===selection);
   const port=selectedSource?.port||selection;
@@ -143,8 +153,13 @@ async function connectSensor(){
   try{
     const status=await backendRequest('/api/status',{},address);
     if(!current())return;
-    // A source may have been opened by another client since scanning. Attach without replacing it.
-    if(status.status!=='streaming')await backendRequest('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sensor,port})},address);
+    // A PC user may explicitly replace playback with hardware. Attach to hardware already running.
+    const switchToHardware = replacePlayback && ['replay', 'sim'].includes(status.source);
+    if (switchToHardware && (status.recording || rt.record || rt.saving)) {
+      toast('Bitte zuerst die laufende Aufnahme stoppen.');
+      return;
+    }
+    if(status.status!=='streaming' || switchToHardware)await backendRequest('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sensor,port})},address);
     if(!current())return;
     connectBridge(true);
   }catch(error){if(current())connectionFailed(`Sensor konnte nicht verbunden werden: ${error.message}`)}
@@ -401,13 +416,45 @@ function requestMlReset(keepLabels){
  }});
 }
 
+function phoneAccessView() {
+  return `<details class="connection-details phone-access"><summary>Auf dem Handy öffnen</summary>
+    <p class="small muted">Verbinde Handy und Rechner mit demselben Netzwerk.</p>
+    <p data-phone-address aria-live="polite"></p></details>`;
+}
+
+async function showPhoneAddress(details) {
+  const output = details.querySelector('[data-phone-address]');
+  const address = rt.bridgeUrl;
+  output.textContent = 'Wird geladen …';
+  applyTranslations(output);
+  try {
+    const bridge = new URL(address);
+    const port = bridge.port || (bridge.protocol === 'wss:' ? '443' : '80');
+    const descriptor = await backendRequest(`/phone-access-${port}.json`, {}, address);
+    const url = new URL(descriptor.url);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Invalid phone address');
+    if (!details.isConnected || rt.bridgeUrl !== address) return;
+    const link = document.createElement('a');
+    link.className = 'text-button';
+    link.textContent = url.href;
+    url.searchParams.set('lang', getLanguage());
+    link.href = url.href;
+    link.dataset.i18nSkip = '';
+    output.replaceChildren(link);
+  } catch {
+    if (!details.isConnected || rt.bridgeUrl !== address) return;
+    output.textContent = 'Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.';
+    applyTranslations(output);
+  }
+}
+
 function advancedView(){
  const p=profile(),history=[...(p.history||[])].reverse();
  settingsStore().ensure(settingsKey('connection'),{bridgeUrl:rt.bridgeUrl});
  settingsStore().ensure(settingsKey('profile'),{rate:String(p.rate),window:String(p.window)});
  return `<div class="page-heading"><h1>Einstellungen</h1></div><div class="settings-layout">
  <section class="panel"><div class="settings-section-head"><h2>Anzeige</h2><span class="settings-scope">Änderungen gelten sofort in diesem Browser.</span></div><div class="settings-immediate"><div class="field"><label for="language-select">Sprache für alle Seiten</label><select id="language-select" data-field="language" data-i18n-skip>${LANGUAGES.map(language=>`<option value="${language.code}" ${getLanguage()===language.code?'selected':''}>${language.name}</option>`).join('')}</select></div><div class="field"><label for="text-size-select">Schriftgröße</label><select id="text-size-select" data-field="text-size">${[['normal','Normal'],['large','Groß'],['hall','Saal (Beamer, große Räume)']].map(([value,name])=>`<option value="${value}" ${(document.documentElement.dataset.textSize||'normal')===value?'selected':''}>${name}</option>`).join('')}</select></div><div class="field"><label>Farbschema</label><button type="button" class="btn" data-action="theme" aria-label="${themeActionLabel()}">${themeIcon()}<span>${themeActionLabel()}</span></button></div></div></section>
- <section class="panel source-settings"><div class="settings-section-head"><h2>Verbindung</h2><span class="settings-scope">Die Adresse wird in diesem Browser gespeichert.</span></div><div class="connection-choices" role="group" aria-label="Datenquelle"><button type="button" class="choice-card ${rt.mode==='bridge'?'selected':''}" data-action="sensor-source" aria-pressed="${rt.mode==='bridge'}" ${rt.record||rt.saving?'disabled':''}>${icon('plug')}<h3>Sensordaten</h3></button><button type="button" class="choice-card ${rt.mode==='demo'?'selected':''}" data-action="demo" aria-pressed="${rt.mode==='demo'}" ${rt.record||rt.saving?'disabled':''}>${icon('wave')}<h3>Demo</h3></button></div><p class="small muted">Die Auswahl der Datenquelle gilt sofort.</p>${liveConnectionPanel()}<div class="metric-row"><span class="muted">Sensormodell</span><span data-i18n-skip>${esc(SENSOR.model)}</span></div><div class="metric-row"><span class="muted">Messbereich</span><span class="mono">${rangeText()}</span></div><form class="settings-form" data-form="connection-settings" data-settings-key="${esc(settingsKey('connection'))}" novalidate>${settingsField('bridgeUrl','Adresse der lokalen Messbrücke',rt.bridgeUrl,{prefix:'bridge',type:'url',hint:'WebSocket-Adresse mit ws:// oder wss://.'})}<div class="row wrap" style="margin-top:12px"><button type="button" class="btn quiet compact" data-action="connect-bridge">${icon('link')} Gespeicherte Messbrücke verbinden</button><button type="button" class="btn quiet compact" data-action="bridge-help">Datenformat ${icon('info')}</button></div>${settingsFooter('Verbindung speichern und prüfen')}</form></section>
+ <section class="panel source-settings"><div class="settings-section-head"><h2>Verbindung</h2><span class="settings-scope">Die Adresse wird in diesem Browser gespeichert.</span></div><div class="connection-choices" role="group" aria-label="Datenquelle"><button type="button" class="choice-card ${rt.mode==='bridge'?'selected':''}" data-action="sensor-source" aria-pressed="${rt.mode==='bridge'}" ${rt.record||rt.saving?'disabled':''}>${icon('plug')}<h3>Sensordaten</h3></button><button type="button" class="choice-card ${rt.mode==='demo'?'selected':''}" data-action="demo" aria-pressed="${rt.mode==='demo'}" ${rt.record||rt.saving?'disabled':''}>${icon('wave')}<h3>Demo</h3></button></div><p class="small muted">Die Auswahl der Datenquelle gilt sofort.</p>${liveConnectionPanel()}<div class="metric-row"><span class="muted">Sensormodell</span><span data-i18n-skip>${esc(SENSOR.model)}</span></div><div class="metric-row"><span class="muted">Messbereich</span><span class="mono">${rangeText()}</span></div><form class="settings-form" data-form="connection-settings" data-settings-key="${esc(settingsKey('connection'))}" novalidate>${settingsField('bridgeUrl','Adresse der lokalen Messbrücke',rt.bridgeUrl,{prefix:'bridge',type:'url',hint:'WebSocket-Adresse mit ws:// oder wss://.'})}<div class="row wrap" style="margin-top:12px"><button type="button" class="btn quiet compact" data-action="connect-bridge">${icon('link')} Gespeicherte Messbrücke verbinden</button><button type="button" class="btn quiet compact" data-action="bridge-help">Datenformat ${icon('info')}</button></div>${settingsFooter('Verbindung speichern und prüfen')}</form>${phoneAccessView()}</section>
  <section class="panel"><div class="settings-section-head"><h2>Messprofil</h2><span class="settings-scope">Gilt für das gewählte Profil in diesem Browser.</span></div><p data-i18n-skip><strong>${esc(p.name)}</strong></p><form class="settings-form" data-form="profile-settings" data-settings-key="${esc(settingsKey('profile'))}" novalidate><div class="fields"><div class="field"><label for="setting-rate">Profilrate</label><select id="setting-rate" name="rate">${SENSOR.rates.map(n=>`<option value="${n}" ${p.rate===n?'selected':''}>${rate(n)}</option>`).join('')}</select></div><div class="field"><label for="setting-window">Diagrammfenster</label><select id="setting-window" name="window">${[10,30,60].map(n=>`<option value="${n}" ${p.window===n?'selected':''}>${n} Sekunden</option>`).join('')}</select></div></div>${settingsFooter('Messprofil speichern')}</form><div class="row wrap" style="margin-top:18px"><button type="button" class="btn compact" data-action="edit-profile" ${rt.record?'disabled':''}>${icon('edit')} Profil bearbeiten</button><button type="button" class="btn quiet compact" data-action="zero" ${rt.record||!rt.connected||rt.invalidSignal?'disabled':''}>${icon('zero')} ${rt.zeroOffset?'Nullpunkt lösen':'Nullpunkt setzen'}</button></div></section>
  <section class="panel"><div class="settings-section-head"><h2>Auswertungsgrenzen</h2><span class="learning-state ${p.learning?'good':'muted'}"><span class="dot"></span>${p.learning?'Anpassung eingeschaltet':'Anpassung pausiert'}</span></div><div class="settings-learning-info"><p>Akzeptierte Messwerte können die Auswertungsgrenzen dieses Profils erweitern. Die Sollgrenzen bleiben erhalten. Die Anpassungen werden in diesem Browser gespeichert.</p></div><div class="metric-row"><span class="muted">Sollgrenzen</span><span class="mono">${num(p.lower)}–${num(p.upper)} ${U()}</span></div><div class="metric-row"><span class="muted">Aktuelle Auswertungsgrenzen</span><span class="mono">${num(p.learnedLower)}–${num(p.learnedUpper)} ${U()}</span></div><div class="row wrap" style="margin-top:16px"><button type="button" class="btn compact" data-action="toggle-learning">${icon(p.learning?'pause':'play')} ${p.learning?'Anpassung pausieren':'Anpassung fortsetzen'}</button><button type="button" class="btn quiet compact" data-action="undo-learning" ${!history.some(h=>h.changed)?'disabled':''}>${icon('back')} Rückgängig</button><button type="button" class="btn quiet compact" data-action="reset-learning">${icon('reset')} Auf Sollgrenzen zurücksetzen</button></div>${history.length?`<details class="settings-advanced"><summary>Änderungsverlauf</summary><div class="history-list">${history.map(h=>`<div class="history-item"><div class="row between"><strong>${h.type==='feedback'?(h.accepted?'Als akzeptabel bewertet':'Als nicht akzeptabel bewertet'):h.type==='undo'?'Anpassung rückgängig':h.type==='training'?'An Trainingsdaten angepasst':h.type==='profile'?'Sollgrenzen geändert':'Grenzen zurückgesetzt'}</strong><span class="mono">${time(h.at)}</span></div><p>${h.value!==undefined?num(h.value)+' '+U()+' · ':''}${h.changed?`${num(h.previousLower)}–${num(h.previousUpper)} → ${num(h.nextLower)}–${num(h.nextUpper)} ${U()}`:esc(h.reason||'Grenzen unverändert.')}</p>${h.note?`<p data-i18n-skip>${esc(h.note)}</p>`:''}</div>`).join('')}</div></details>`:''}</section>
  ${mlPanel()}
@@ -515,7 +562,11 @@ function updateLive(){const p=profile();if($('#reading-source'))$('#reading-sour
   if($(`#led-${name}-description`))$(`#led-${name}-description`).textContent=ledMeaning(name,value);
   document.querySelectorAll(`.led-option[data-led="${name}"]`).forEach(button=>{const active=button.dataset.value===value;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});
 }rt.viewer?.setStatus(rt.led);rt.dialogViewer?.setStatus(rt.led)}
-function addValue(value,{led=null}={}){if(!Number.isFinite(value))return;if(rt.mode==='demo')rt.elapsed+=1/DISPLAY_RATE;else rt.elapsed=Math.max(0,(performance.now()-rt.bridgeStart)/1000);rt.value=value;rt.lastValidAt=new Date().toISOString();const point={t:rt.elapsed,value,version:profile().version,...(rt.channelBreak?{breakBefore:true}:{})};rt.channelBreak=false;rt.points.push(point);rt.points=rt.points.filter(p=>p.t>=rt.elapsed-65);if(led){rt.led=led}else if(rt.scenario==='normal'){rt.led={state:Math.abs(value-SENSOR.midpoint)<.001?'yellow':'green',output:state.settings.output==='analog'?'red':'green'}}if(rt.record)rt.record.points.push({...point,t:Math.max(0,Math.round((rt.elapsed-rt.record.startElapsed)*1000)/1000)});const p=profile(),outsideProfile=value<p.learnedLower||value>p.learnedUpper;if(!outsideProfile){resolveIncident('deviation');rt.outsideEpisode=false}else if(!rt.outsideEpisode){rt.outsideEpisode=true;if(rt.elapsed>rt.cooldown&&!rt.mlKnown&&!rt.deviation?.ml){rt.deviation={value,t:rt.elapsed,profile:clone(p)};rt.lastFeedback=null;refreshSuggest();reportIncident('deviation','Grenzwert überschritten',`Messwert ${num(value)} ${U()}; Profilgrenzen ${num(p.learnedLower)}–${num(p.learnedUpper)} ${U()}.`);if(rt.route==='monitor'){const target=$('#learning-notice');if(target){target.innerHTML=learningNotice();refreshActivitySummary()}}}}if(rt.mode==='demo'||performance.now()-(rt.lastDraw||0)>100){updateLive();drawCharts();rt.lastDraw=performance.now()}}
+function addValue(value, {led = null, elapsed} = {}) {
+  if (!Number.isFinite(value)) return;
+  if (rt.mode === 'demo') rt.elapsed += 1 / DISPLAY_RATE;
+  else rt.elapsed = elapsed ?? Math.max(0, (performance.now() - rt.bridgeStart) / 1000);
+  rt.value=value;rt.lastValidAt=new Date().toISOString();const point={t:rt.elapsed,value,version:profile().version,...(rt.channelBreak?{breakBefore:true}:{})};rt.channelBreak=false;rt.points.push(point);rt.points=rt.points.filter(p=>p.t>=rt.elapsed-65);if(led){rt.led=led}else if(rt.scenario==='normal'){rt.led={state:Math.abs(value-SENSOR.midpoint)<.001?'yellow':'green',output:state.settings.output==='analog'?'red':'green'}}if(rt.record)rt.record.points.push({...point,t:Math.max(0,Math.round((rt.elapsed-rt.record.startElapsed)*1000)/1000)});const p=profile(),outsideProfile=value<p.learnedLower||value>p.learnedUpper;if(!outsideProfile){resolveIncident('deviation');rt.outsideEpisode=false}else if(!rt.outsideEpisode){rt.outsideEpisode=true;if(rt.elapsed>rt.cooldown&&!rt.mlKnown&&!rt.deviation?.ml){rt.deviation={value,t:rt.elapsed,profile:clone(p)};rt.lastFeedback=null;refreshSuggest();reportIncident('deviation','Grenzwert überschritten',`Messwert ${num(value)} ${U()}; Profilgrenzen ${num(p.learnedLower)}–${num(p.learnedUpper)} ${U()}.`);if(rt.route==='monitor'){const target=$('#learning-notice');if(target){target.innerHTML=learningNotice();refreshActivitySummary()}}}}if(rt.mode==='demo'||performance.now()-(rt.lastDraw||0)>100){updateLive();drawCharts();rt.lastDraw=performance.now()}}
 function startRecord(name,cls=''){if(!name.trim()){toast('Bitte gib einen Namen für die Aufnahme ein.');return}if(rt.invalidSignal){toast('Warte auf einen gültigen Messwert.');return}if(rt.unsaved){toast('Speichere zuerst die vorherige Aufnahme.');return}if(!rt.connected){toast('Verbinde zuerst eine Datenquelle.');return}rt.paused=false;rt.lastSaved=null;rt.deviation=null;rt.lastFeedback=null;rt.record={id:generateId('run'),name,createdAt:new Date().toISOString(),source:rt.mode==='demo'?'demo':rt.backendReplay?'replay':'sensor',sensor:SENSOR.model,profile:clone(profile()),profileAtStart:clone(profile()),points:[{t:0,value:rt.value,version:profile().version}],markers:[],feedback:[],parameterHistory:[],storage:'Browser · lokal',displayRate:DISPLAY_RATE,zeroOffset:rt.zeroOffset,startElapsed:rt.elapsed};rt.record.cls=cls;rt.record.backend=false;if(rt.mode==='bridge'&&rt.connected&&cls&&!rt.backendReplay)backendRequest('/api/record/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,cls})}).then(()=>{if(rt.record)rt.record.backend=true;else backendRequest('/api/record/stop',{method:'POST'}).catch(()=>{})}).catch(error=>toast(`Die beschriftete Aufnahme konnte am Messserver nicht gestartet werden: ${error.message}`));closeDialog();render();toast(cls&&!rt.backendReplay?'Aufnahme läuft. Beschriftete Daten werden vom Messserver gelernt.':'Aufnahme läuft. Messwerte werden erfasst.')}
 function finishRecord(interrupted=false){const r=rt.record;if(!r)return null;if(r.backend)backendRequest('/api/record/stop',{method:'POST'}).then(()=>{if(r.cls)toast(`Beschriftete Aufnahme (${r.cls==='anomaly'?'Anomalie':'normal'}) an die KI übergeben.`)}).catch(()=>{});r.duration=Math.max(.2,Math.round((rt.elapsed-r.startElapsed)*1000)/1000);r.profile=clone(profile());r.interrupted=interrupted;if(r.source!=='demo')r.displayRate=Math.round(r.points.length/r.duration*100)/100;delete r.startElapsed;rt.record=null;return r}
 function saveRecording(r){if(!r)return;const old=state.recordings;state.recordings=[r,...old.filter(x=>x.id!==r.id)];if(persist()){rt.unsaved=null;rt.lastSaved=r;toast('Aufzeichnung lokal gespeichert.');render()}else{state.recordings=old;rt.unsaved=r;render()}}
@@ -592,6 +643,7 @@ function connectBridge(quiet=false) {
   let modelVerified = false;
   let checkingModel = false;
   let gotValue = Boolean(keepHistory);
+  let frameOrigin, previousFrameTime;
   let sourceIdentity = keepHistory?rt.sourceIdentity:null;
   const applySource = status => {
     const info=status.info||{};
@@ -691,10 +743,25 @@ function connectBridge(quiet=false) {
     rt.invalidSignal = false;
     resolveIncident('sensor');
     resolveIncident('connection');
-    if (!gotValue) rt.bridgeStart = performance.now();
+    if (!gotValue) {
+      rt.bridgeStart = performance.now();
+      frameOrigin = previousFrameTime = undefined;
+    }
     gotValue = true;
     rt.led=sample.led;
-    if (!rt.paused) addValue(sample.value, { led: sample.led });
+    // Use the PC measurement clock on both screens so WLAN arrival jitter cannot change the slope.
+    let elapsed;
+    if (Number.isFinite(data.t)) {
+      if (data.t === previousFrameTime) return;
+      if (frameOrigin === undefined || data.t < previousFrameTime) {
+        if (data.t < previousFrameTime) rt.channelBreak = true;
+        const offset = rt.points.length ? Math.max(rt.elapsed, (performance.now() - rt.bridgeStart) / 1000) : 0;
+        frameOrigin = data.t - offset;
+      }
+      previousFrameTime = data.t;
+      elapsed = data.t - frameOrigin;
+    }
+    if (!rt.paused) addValue(sample.value, {led: sample.led, elapsed});
     else updateLive();
     if (!wasConnected) announce('Messwerte werden empfangen.');
     if (!wasConnected || wasInvalid || sourceChanged) render();
@@ -772,7 +839,7 @@ async function handleAction(el,event){const action=el.dataset.action;if(settings
 
 document.addEventListener('click',event=>{const link=event.target.closest('a[href]');if(link&&link.target!=='_blank'&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&link.getAttribute('href')!=='#main'){const url=new URL(link.href,location.href);if(url.href!==location.href&&(settingsSaving.size||settingsDirty())){event.preventDefault();if(settingsSaving.size)toast('Bitte warte, bis das Speichern abgeschlossen ist.');else confirmSettingsLeave(()=>location.assign(url.href))}}},true);
 document.addEventListener('click',event=>{primeAlertAudio();if(event.target.closest('.skip-link')){event.preventDefault();$('#main')?.focus();return}const el=event.target.closest('[data-action]');if(el&&!el.disabled){handleAction(el,event).catch(e=>toast(e.message))}});
-document.addEventListener('toggle',event=>{if(event.target.matches?.('.monitor-activity')){rt.activityOpen=event.target.open;return}if(event.target.matches?.('.demo-tools')){rt.demoToolsOpen=event.target.open;return}if(event.target.id!=='chart-data')return;rt.tableOpen=event.target.open;if(rt.tableOpen&&!rt.tableSnapshot){captureChartData();$('#chart-data-content').innerHTML=chartDataRows(rt.tableSnapshot);applyTranslations($('#chart-data-content'));}},true);
+document.addEventListener('toggle',event=>{if(event.target.matches?.('.phone-access')){if(event.target.open)showPhoneAddress(event.target);return}if(event.target.matches?.('.monitor-activity')){rt.activityOpen=event.target.open;return}if(event.target.matches?.('.demo-tools')){rt.demoToolsOpen=event.target.open;return}if(event.target.id!=='chart-data')return;rt.tableOpen=event.target.open;if(rt.tableOpen&&!rt.tableSnapshot){captureChartData();$('#chart-data-content').innerHTML=chartDataRows(rt.tableSnapshot);applyTranslations($('#chart-data-content'));}},true);
 for(const eventName of ['input','change'])document.addEventListener(eventName,event=>{const form=event.target.closest('[data-settings-key]');if(form){settingsStore().set(form.dataset.settingsKey,readSettingsForm(form));restoreSettingsDrafts()}});
 document.addEventListener('submit',event=>{const form=event.target.closest('[data-form]');if(!form)return;event.preventDefault();const data=new FormData(form);try{switch(form.dataset.form){
  case'marker':{const note=data.get('note').trim();if(!note)return;const m={id:generateId('note'),t:rt.elapsed,note};rt.markers.push(m);if(rt.record)rt.record.markers.push({...m,t:Math.max(0,m.t-rt.record.startElapsed)});render();toast('Notiz hinzugefügt.');break}
@@ -798,7 +865,12 @@ document.addEventListener('input',event=>{const el=event.target;if(el.id==='run-
 $('#dialog').addEventListener('close',()=>{$('#dialog').querySelector('video')?.pause();settingsStore().clear('profile-editor');rt.dialogViewer?.dispose();rt.dialogViewer=null;dialogType='';dialogContext=null});
 $('#dialog').addEventListener('cancel',event=>{if(dialogType==='profile'){captureSettingsDrafts();if(settingsStore().dirty('profile-editor')){event.preventDefault();closeDialog()}}});
 $('#dialog').addEventListener('click',event=>{if(event.target===$('#dialog')){const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog()}});
-function readRoute(){const name=location.hash.slice(1);rt.route=['monitor','recordings','advanced','setup'].includes(name)?name:'monitor';rt.replayPlaying=false;render();if(rt.route==='advanced')loadMl()}
+function readRoute(){const name=location.hash.slice(1);rt.route=['monitor','recordings','advanced','setup'].includes(name)?name:'monitor';rt.replayPlaying=false;render();
+  if (rt.route === 'advanced') {
+    loadMl();
+    if (rt.connected && ['sim', 'replay'].includes(rt.backendStatus?.source)) refreshBackend();
+  }
+}
 window.addEventListener('hashchange',()=>{if(settingsSaving.size||settingsDirty()){const target=location.hash;history.replaceState(null,'','#'+rt.route);if(settingsSaving.size)toast('Bitte warte, bis das Speichern abgeschlossen ist.');else confirmSettingsLeave(()=>{closeDialog(true);location.hash=target});return}closeDialog();readRoute();window.scrollTo(0,0)});
 window.addEventListener('resize',()=>drawCharts());
 window.addEventListener('storage',event=>{if(event.key==='me-theme')applyTheme(event.newValue);if(event.key===textSizeKey)applyTextSize(event.newValue);if(event.key==='landing-lang'){updateLive();drawCharts();if(rt.route==='recordings'&&rt.analysis==='report')render();assistant?.refresh();}});

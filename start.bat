@@ -11,5 +11,5 @@ if not exist ".venv\Scripts\python.exe" (
   )
 )
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --quiet -r requirements.txt || (pause & exit /b 1)
-echo Micro-Epsilon Live-Monitor: http://127.0.0.1:8000/
-".venv\Scripts\python.exe" -m uvicorn app:app --host 127.0.0.1 --port 8000 %*
+rem Startet Messserver und Handy-Freigabe zusammen (wie start.sh); die Adressen erscheinen hier im Fenster.
+".venv\Scripts\python.exe" "%~dp0frontend\Handy frontend\serve.py" --with-backend app:app --host 127.0.0.1 --port 8000 %*

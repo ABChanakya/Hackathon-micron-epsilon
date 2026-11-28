@@ -1,6 +1,9 @@
 // Shared copy for the companion phone view; German source strings are the stable keys.
 export default {
   "en": {
+    "PC-Messung": "PC measurement",
+    "Auf dem Handy öffnen": "Open on phone",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "Start the phone server on the computer. The Wi-Fi address appears in the terminal.",
     "Abstand (mm)": "Distance (mm)",
     "Abstand ab Sensorfront": "Distance from sensor face",
     "Abstand prüfen": "Check distance",
@@ -82,6 +85,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "Enable JavaScript to use Sensor Cockpit."
   },
   "fr": {
+    "PC-Messung": "Mesure du PC",
+    "Auf dem Handy öffnen": "Ouvrir sur le téléphone",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "Démarrez le serveur mobile sur l’ordinateur. L’adresse Wi-Fi s’affiche dans le terminal.",
     "Abstand (mm)": "Distance (mm)",
     "Abstand ab Sensorfront": "Distance depuis la face du capteur",
     "Abstand prüfen": "Vérifier la distance",
@@ -163,6 +169,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "Active JavaScript pour utiliser Sensor Cockpit."
   },
   "es": {
+    "PC-Messung": "Medición del PC",
+    "Auf dem Handy öffnen": "Abrir en el móvil",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "Inicia el servidor móvil en el ordenador. La dirección wifi aparece en la terminal.",
     "Abstand (mm)": "Distancia (mm)",
     "Abstand ab Sensorfront": "Distancia desde la cara del sensor",
     "Abstand prüfen": "Comprobar distancia",
@@ -244,6 +253,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "Activa JavaScript para usar Sensor Cockpit."
   },
   "it": {
+    "PC-Messung": "Misurazione del PC",
+    "Auf dem Handy öffnen": "Apri sul telefono",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "Avvia il server mobile sul computer. L’indirizzo Wi-Fi viene mostrato nel terminale.",
     "Abstand (mm)": "Distanza (mm)",
     "Abstand ab Sensorfront": "Distanza dalla superficie del sensore",
     "Abstand prüfen": "Controlla distanza",
@@ -325,6 +337,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "Attiva JavaScript per usare Sensor Cockpit."
   },
   "cs": {
+    "PC-Messung": "Měření z počítače",
+    "Auf dem Handy öffnen": "Otevřít na telefonu",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "Spusťte na počítači server pro telefon. Adresa pro Wi-Fi se zobrazí v terminálu.",
     "Abstand (mm)": "Vzdálenost (mm)",
     "Abstand ab Sensorfront": "Vzdálenost od čela senzoru",
     "Abstand prüfen": "Kontrola vzdálenosti",
@@ -406,6 +421,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "Pro použití Sensor Cockpit zapni JavaScript."
   },
   "zh": {
+    "PC-Messung": "电脑测量",
+    "Auf dem Handy öffnen": "在手机上打开",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "请在电脑上启动手机端服务器，终端中会显示 Wi-Fi 地址。",
     "Abstand (mm)": "距离（mm）",
     "Abstand ab Sensorfront": "距传感器前端的距离",
     "Abstand prüfen": "检查距离",
@@ -487,6 +505,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "请启用 JavaScript 以使用 Sensor Cockpit。"
   },
   "ja": {
+    "PC-Messung": "PCの計測値",
+    "Auf dem Handy öffnen": "スマートフォンで開く",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "PCでスマートフォン用サーバーを起動してください。Wi-Fi用のアドレスが端末に表示されます。",
     "Abstand (mm)": "距離（mm）",
     "Abstand ab Sensorfront": "センサー前面からの距離",
     "Abstand prüfen": "距離を確認",
@@ -568,6 +589,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "Sensor Cockpitを使用するにはJavaScriptを有効にしてください。"
   },
   "ko": {
+    "PC-Messung": "PC 측정값",
+    "Auf dem Handy öffnen": "휴대폰에서 열기",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "컴퓨터에서 모바일 서버를 시작하세요. 터미널에 Wi-Fi 주소가 표시됩니다.",
     "Abstand (mm)": "거리 (mm)",
     "Abstand ab Sensorfront": "센서 전면 기준 거리",
     "Abstand prüfen": "거리 확인",
@@ -649,6 +673,9 @@ export default {
     "Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.": "Sensor Cockpit을 사용하려면 JavaScript를 활성화하세요."
   },
   "pirate": {
+    "PC-Messung": "Readings from the PC",
+    "Auf dem Handy öffnen": "Open on yer phone",
+    "Starte den Handy-Server am Rechner. Die WLAN-Adresse erscheint im Terminal.": "Start the phone server on yer computer. Find the Wi-Fi address in yer terminal.",
     "Abstand (mm)": "Distance (mm)",
     "Abstand ab Sensorfront": "Distance from the sensor face",
     "Abstand prüfen": "Check the distance",

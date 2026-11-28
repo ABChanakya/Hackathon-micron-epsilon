@@ -15,13 +15,13 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function harness(request, selectedValue = '/dev/test-sensor') {
+function harness(request, selectedValue = '/dev/test-sensor', replacePlayback = false) {
   const calls = [], attachments = [], failures = [];
   const rt = { mode: 'bridge', bridgeUrl: 'ws://localhost:8000/ws/stream', connecting: false, record: null };
   const context = vm.createContext({
     rt,
-    $: selector => selector === '#live-port' ? { value: selectedValue } : null,
-    render() {},
+    $: selector => selector === '#live-port' ? { value: selectedValue, dataset: {replacePlayback: String(replacePlayback)} } : null,
+    render() {}, toast() {},
     backendRequest(path, options, address) {
       calls.push({ path, options, address });
       return request(path, options, address);
@@ -104,4 +104,12 @@ test('the selected thermoMETER source is connected using its own sensor protocol
   assert.deepEqual(JSON.parse(h.calls[1].options.body), { sensor: 'thermo', port: '/dev/test-sensor' });
   assert.equal(h.attachments.length, 1);
   assert.deepEqual(h.failures, []);
+});
+
+test('explicit PC selection can switch playback to USB, preserving a running hardware source or recording', async () => {
+  for (const [source, recording, shouldSwitch] of [['replay',false,true],['sim',false,true],['serial-ild1900',false,false],['replay',true,false]]) {
+    const h = harness(() => Promise.resolve({status:'streaming', source, recording}), '/dev/test-sensor', true);
+    await h.connect();
+    assert.equal(h.calls.some(call => call.path === '/api/connect'), shouldSwitch);
+  }
 });

@@ -7,5 +7,4 @@ if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
 fi
 .venv/bin/python -m pip install --disable-pip-version-check --quiet -r requirements.txt
-printf 'Micro-Epsilon Live-Monitor: http://127.0.0.1:8000/\n'
-exec .venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000 "$@"
+exec .venv/bin/python "$repo_dir/frontend/Handy frontend/serve.py" --with-backend app:app --host 127.0.0.1 --port 8000 "$@"
