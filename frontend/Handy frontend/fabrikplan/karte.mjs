@@ -84,6 +84,7 @@ export function mountFactoryPlan(parent, { selectSensor }) {
   let mode = 'map';
   let modelRenderer;
   const selectable = [];   // every button that selects a sensor (map and grid), for aria-pressed
+  let liveKey = null;      // the head a real, live sensor drives (see "live sensor" below)
 
   // ---- sensors -------------------------------------------------------------------------------
   const heads = [];
@@ -99,7 +100,8 @@ export function mountFactoryPlan(parent, { selectSensor }) {
 
   function choose(head, button) {
     for (const item of selectable) item.setAttribute('aria-pressed', String(item === button));
-    selectSensor(head.sensor);
+    // the module the real sensor drives opens the live readings, not a recorded demo
+    selectSensor(head.key === liveKey ? { ...head.sensor, live: true } : head.sensor);
   }
 
   // ---- plan (zoomed out) ------------------------------------------------------------------------
@@ -318,7 +320,7 @@ export function mountFactoryPlan(parent, { selectSensor }) {
   const liveHead = { ild1900: 'Qualitätskontrolle|A', thermo_uc: 'Mechanische Bearbeitung|' };
   const reasons = { mean: 'Messwert verschoben', std: 'Rauschen erhöht', p2p: 'Schwankung erhöht', slope: 'Ungewöhnlicher Verlauf',
     jitter: 'Unruhiges Signal', err_frac: 'Ungültige Messwerte', intensity: 'Signalstärke verändert', no_match: 'Passt zu keinen bekannten Daten' };
-  let liveKey = null, liveSeen = 0, polling = false;
+  let liveSeen = 0, polling = false;
   async function pollLive() {
     if (content.hidden || polling) return;
     polling = true;

@@ -295,8 +295,25 @@ function selectView(live) {
     drawChart();
   }
 }
-byId('view-live').addEventListener('click', () => selectView(true));
-byId('view-recorded').addEventListener('click', () => selectView(false));
+byId('view-live').addEventListener('click', () => { userChoseView = true; selectView(true); });
+byId('view-recorded').addEventListener('click', () => { userChoseView = true; selectView(false); });
+
+// With a real sensor connected the page opens on its live readings, not on demo data, and switches over when one is
+// connected later, until the person picks a tab themselves.
+let userChoseView = false;
+async function followLiveSensor() {
+  if (userChoseView) return;
+  try {
+    const response = await fetch('/api/status', { cache: 'no-store' });
+    const status = response.ok ? await response.json() : null;
+    const live = status?.status === 'streaming' && status.device?.live === true && status.device.verified === true;
+    if (live && byId('live-view').hidden) selectView(true);
+  } catch {
+    // no measuring server: stay on the demo
+  }
+}
+followLiveSensor();
+setInterval(followLiveSensor, 3000);
 
 const preferenceKey = 'micro-epsilon-mobile-display';
 function readPreferences() {
@@ -361,6 +378,13 @@ window.addEventListener('resize', () => drawChart());
 showDataset();
 const clearFactorySelection = mountFactoryPlan(byId('main'), {
   selectSensor(sensor) {
+    if (sensor.live) {                       // the real sensor: show its live readings
+      userChoseView = true;
+      sensorDemo.clear();
+      selectView(true);
+      byId('live-view').scrollIntoView({ block: 'start' });
+      return;
+    }
     byId('demo-state').setAttribute('role', 'status');
     const dataset = DEMO_DATASETS.find(({ id }) => id === sensor.demoId);
     sensorDemo.open(sensor, dataset);
