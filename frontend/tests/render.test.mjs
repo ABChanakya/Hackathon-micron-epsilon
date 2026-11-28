@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import {assistantText} from '../dist/assistant-i18n.js';
 
 const source = await readFile(new URL('../dist/app.js', import.meta.url), 'utf8');
 const end = source.indexOf("document.addEventListener('click'");
@@ -12,7 +13,7 @@ const engine = await import(`data:text/javascript;base64,${Buffer.from(data).toS
 
 function viewContext() {
   const context = vm.createContext({
-    ...engine, loadState: engine.createInitialState, structuredClone,
+    ...engine, loadState: engine.createInitialState, structuredClone, getLocale: () => 'de-DE', getLanguage: () => 'de', assistantText,
     location: { protocol: 'http:', hostname: 'localhost', host: 'localhost:8000', port: '8000' },
     performance: { now: () => 0 },
   });
@@ -62,4 +63,38 @@ test('archives keep millimetre precision and cannot be compared against Celsius 
   } finally {
     engine.useSensor('ild1900');
   }
+});
+
+test('assistant snapshots retain source and profile identity without sharing mutable state', () => {
+  engine.useSensor('ild1900');
+  const context = viewContext();
+  vm.runInContext("rt.mode='demo';rt.connected=true;rt.value=25.012;rt.zeroOffset=.01", context);
+  const snapshot = vm.runInContext('assistantContext()', context);
+  assert.equal(snapshot.source, 'demo');
+  assert.equal(snapshot.sensor.unit, 'mm');
+  assert.equal(snapshot.valid, true);
+  assert.equal(snapshot.zeroOffset, .01);
+  const original = vm.runInContext('profile().upper', context);
+  snapshot.profile.upper = 29;
+  assert.equal(vm.runInContext('profile().upper', context), original);
+  vm.runInContext("rt.mode='bridge';rt.backendReplay='Recorded trial';rt.invalidSignal=true", context);
+  const replay = vm.runInContext('assistantContext()', context);
+  assert.equal(replay.source, 'replay');
+  assert.equal(replay.valid, false);
+  assert.equal(vm.runInContext('assistantError().code', context), 'INVALID_SIGNAL');
+});
+
+test('assistant chart summaries match the visible window and displayed zero offset', () => {
+  engine.useSensor('ild1900');
+  const context = viewContext();
+  vm.runInContext(`rt.elapsed=100;rt.window=10;rt.zeroOffset=25;
+    rt.points=[{t:80,value:29},{t:90,value:25},{t:95,value:25.02},{t:99,value:25.1},{t:100,value:NaN},{t:110,value:21}]`, context);
+  const summary = vm.runInContext('assistantChartSummary()', context);
+  assert.equal(summary.count, 3);
+  assert.equal(summary.min, 0);
+  assert.ok(Math.abs(summary.max - .1) < 1e-9);
+  assert.equal(summary.outside, 1);
+  assert.equal(summary.duration, 10);
+  assert.ok(Math.abs(summary.trend - .1) < 1e-9);
+  assert.equal(vm.runInContext('rt.points[0].value', context), 29);
 });

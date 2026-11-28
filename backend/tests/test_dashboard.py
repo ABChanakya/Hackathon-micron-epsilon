@@ -48,9 +48,14 @@ class DashboardTests(unittest.TestCase):
     def test_monitor_and_assets_share_the_api_origin(self):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
-        self.assertIn("Sensor Monitor", page.text)
+        self.assertIn("Sensor Cockpit", page.text)
         self.assertEqual(self.client.get("/app.js").status_code, 200)
         self.assertEqual(self.client.get("/style.css").status_code, 200)
+        for asset in ["assistant.js", "assistant-ui.js", "assistant-i18n.js", "assistant.css",
+                      "i18n.js", "assets/micro-epsilon-logo.svg"]:
+            self.assertEqual(self.client.get("/" + asset).status_code, 200, asset)
+        for language in ["en", "fr", "es", "it", "cs", "zh", "ja", "ko", "pirate"]:
+            self.assertEqual(self.client.get(f"/locales/{language}.js").status_code, 200, language)
         self.assertEqual(self.client.get("/pitch/").status_code, 200)
         self.assertEqual(self.client.get("/pitch/page.js").status_code, 200)
         self.assertEqual(self.client.get("/pitch/assets/ild1900.png").status_code, 200)

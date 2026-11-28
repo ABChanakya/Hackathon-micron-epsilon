@@ -8,11 +8,20 @@
   try { stored = localStorage.getItem('landing-lang'); } catch (e) {}
   var code = params.get('lang') || stored || (navigator.language || 'de').slice(0, 2).toLowerCase();
   if (!I[code]) code = 'de';
+  try { localStorage.setItem('landing-lang', code); } catch (e) {}
+  window.addEventListener('storage', function (event) {
+    if (event.key !== 'landing-lang' || !I[event.newValue] || event.newValue === code) return;
+    var url = new URL(location.href);
+    url.searchParams.set('lang', event.newValue);
+    location.replace(url.toString());
+  });
   var T = I[code];
-  // The backend (port 8000) serves this page at /pitch/ and the monitor at /. Opened on its own, it still links there.
+  // The unified /pitch/ page uses its own origin; standalone previews fall back to the backend on port 8000.
   var HOST = location.hostname || 'localhost';
-  var WS_URL = params.get('ws') || ((location.protocol === 'https:' ? 'wss://' : 'ws://') + HOST + ':8000/ws/bridge');
-  var MONITOR_URL = params.get('monitor') || (location.port === '8000' ? '/' : 'http://' + HOST + ':8000/');
+  var UNIFIED = /^\/pitch(?:\/|$)/.test(location.pathname) || location.port === '8000';
+  var BACKEND_ORIGIN = UNIFIED ? location.origin : (location.protocol === 'https:' ? 'https://' : 'http://') + HOST + ':8000';
+  var WS_URL = params.get('ws') || BACKEND_ORIGIN.replace(/^http/, 'ws') + '/ws/bridge';
+  var MONITOR_URL = params.get('monitor') || (UNIFIED ? '/' : BACKEND_ORIGIN + '/');
 
   var fmt = function (v, d) {
     return new Intl.NumberFormat(T._locale, { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }).format(v);
@@ -36,6 +45,8 @@
   Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-alt]'), function (el) { el.alt = t(el.getAttribute('data-i18n-alt')); });
   Array.prototype.forEach.call(document.querySelectorAll('.side--raw'), function (el) { el.setAttribute('data-side', t('side_raw')); });
   Array.prototype.forEach.call(document.querySelectorAll('.side--hum'), function (el) { el.setAttribute('data-side', t('side_human')); });
+  $('.empty').setAttribute('aria-label', t('t_empty'));
+  $('#trace').setAttribute('aria-label', t('peak_raw_cap'));
   $('#cta').href = MONITOR_URL;
 
   var sel = $('#lang');
