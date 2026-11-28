@@ -15,12 +15,12 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function harness(request) {
+function harness(request, selectedValue = '/dev/test-sensor') {
   const calls = [], attachments = [], failures = [];
   const rt = { mode: 'bridge', bridgeUrl: 'ws://localhost:8000/ws/stream', connecting: false, record: null };
   const context = vm.createContext({
     rt,
-    $: selector => selector === '#live-port' ? { value: '/dev/test-sensor' } : null,
+    $: selector => selector === '#live-port' ? { value: selectedValue } : null,
     render() {},
     backendRequest(path, options, address) {
       calls.push({ path, options, address });
@@ -91,4 +91,17 @@ test('an existing stream is attached without replacing its sensor source', async
   assert.deepEqual(h.calls.map(call => call.path), ['/api/status']);
   assert.deepEqual(h.attachments, ['ws://localhost:8000/ws/stream']);
   assert.equal(h.failures.length, 0);
+});
+
+
+test('the selected thermoMETER source is connected using its own sensor protocol', async () => {
+  const h = harness(path => Promise.resolve({ status: path === '/api/status' ? 'disconnected' : 'streaming' }), 'thermo|/dev/test-sensor');
+  h.rt.ports = [
+    { sensor: 'ILD-serial', port: '/dev/test-sensor', interface: 'serial' },
+    { sensor: 'thermo', port: '/dev/test-sensor', interface: 'ME-Bus' },
+  ];
+  await h.connect();
+  assert.deepEqual(JSON.parse(h.calls[1].options.body), { sensor: 'thermo', port: '/dev/test-sensor' });
+  assert.equal(h.attachments.length, 1);
+  assert.deepEqual(h.failures, []);
 });

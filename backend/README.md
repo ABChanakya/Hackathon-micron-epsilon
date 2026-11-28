@@ -1,6 +1,6 @@
 # Sensor backend
 
-FastAPI service between a Micro-Epsilon ILD1420/ILD1900 sensor (or a simulator, or a recording) and the web UI.
+FastAPI service between a Micro-Epsilon ILD1420/ILD1900 sensor or thermoMETER UC (or a simulator, or a recording) and the web UI.
 The API contract is in [API.md](API.md).
 
 ## Run
@@ -24,6 +24,13 @@ The same serial source detects an ILD1900 automatically. Use `GET /api/sensors/s
 the port above is an example. `pyserial` is included in `requirements.txt`.
 While connected the sensor streams over RS422 and its 4-20 mA analog output is off. Disconnecting, or stopping the server
 with Ctrl+C, switches it back. If the server is killed hard (`kill -9`), reconnect and disconnect once to restore it.
+
+Connect the thermoMETER UC infrared thermometer (3.3 V TTL USB cable):
+```
+curl -X POST localhost:8000/api/connect -H 'content-type: application/json' \
+     -d '{"sensor":"thermo","port":"/dev/cu.usbserial-FTA3RQ8E"}'
+```
+It streams °C at about 55 readings per second; the monitor website switches to °C by itself when it connects.
 
 ## Record several materials in one go (guided)
 ```
@@ -61,4 +68,4 @@ From `backend/`, install `requirements-dev.txt`, then run:
 ```
 python -m unittest discover -s tests
 ```
-The checks use an isolated in-process simulator and do not open a serial port or contact a running backend.
+The checks use isolated in-process simulator and temperature fixtures and do not open a serial port or contact a running backend.

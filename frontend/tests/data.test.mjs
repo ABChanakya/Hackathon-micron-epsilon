@@ -206,7 +206,15 @@ test('real PDF export uses selected-window learning state and application time',
     engine.exportReportPDF(recording, { start: 0, end: 20 });
     assert.match(captured.join(' '), /Quelle: Wiedergabe.*gespeicherte Messwerte/);
     assert.doesNotMatch(captured.join(' '), /Quelle: Sensor/);
-  } finally { delete globalThis.jspdf; }
+    engine.useSensor('thermo_uc');
+    const thermalRecording = engine.createInitialState().recordings[0];
+    engine.useSensor('ild1900');
+    captured = [];
+    engine.exportReportPDF(thermalRecording, { start: 0, end: 20 });
+    assert.ok(captured.includes('Temperatur / °C'));
+    assert.ok(captured.includes('50 Hz / °C'));
+    assert.ok(captured.some(text => text.includes('25,00 °C')));
+  } finally { engine.useSensor('ild1900'); delete globalThis.jspdf; }
 });
 
 test('the simple bridge accepts millimetres and rejects an explicitly different sensor', () => {
@@ -351,4 +359,122 @@ test('native raw numeric status is not interpreted as an LED colour', () => {
   assert.deepEqual(engine.bridgeLedState({ unit: 'mm', value: null, state: 'red', output: 'green' }), {
     state: 'red', output: 'green',
   });
+});
+test('the backend status selects the thermoMETER and the monitor switches unit, range and profiles', () => {
+  const thermoStatus = {
+    status: 'streaming', source: 'thermo-uc',
+    info: { model: 'UC-SF22-S3', name: 'thermoMETER UC', unit: '°C', range_min: -50, range_max: 900 },
+  };
+  try {
+    assert.equal(engine.sensorFromStatus(thermoStatus), 'thermo_uc');
+    assert.equal(engine.matchesBackendSensor(thermoStatus), true);
+    assert.equal(engine.sensorFromStatus({ ...thermoStatus, info: { ...thermoStatus.info, unit: 'mm' } }), null);
+
+    const before = engine.createInitialState();
+    assert.ok(engine.useSensor('thermo_uc', thermoStatus.info));
+    assert.equal(engine.SENSOR.unit, '°C');
+    assert.equal(engine.SENSOR.model, 'thermoMETER UC-SF22-S3');
+    assert.deepEqual([engine.SENSOR.rangeStart, engine.SENSOR.rangeEnd], [-50, 900]);
+
+    const switched = engine.adoptSensor(before);
+    assert.equal(switched.sensorModel, 'thermoMETER UC-SF22-S3');
+    assert.ok(switched.profiles.every(p => p.unit === '°C'));
+    assert.equal(switched.recordings.length, before.recordings.length);      // recordings are kept
+    assert.equal(engine.unitOf(before.recordings[0]), 'mm');               // and keep their own unit
+
+    // real backend frames: the temperature is raw_value; there is no LED and no distance from the face
+    const frame = { status: 'streaming', n: 52, value: 31.85, raw_value: 31.85, dist_from_face_mm: null, unit: '°C', state_flags: null };
+    assert.deepEqual(engine.parseBridgeSample(frame), { error: 'unverified' });
+    assert.deepEqual(engine.parseBridgeSample(frame, true), { value: 31.85, led: { state: 'unknown', output: 'unknown' } });
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, raw_value: null, n: 0 }, true), { error: 'signal' });
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, raw_value: 950 }, true), { error: 'range' });
+    // the simple bridge format in °C
+    assert.deepEqual(engine.parseBridgeSample({ value: 24.1, unit: '°C', sensor: 'UC-SF22-S3' }), { value: 24.1, led: { state: 'unknown', output: 'unknown' } });
+    assert.equal(engine.parseBridgeSample({ value: 24.1, unit: 'mm' }), null);
+
+    // switching back restores the distance profiles that were shelved
+    assert.ok(engine.useSensor('ild1900'));
+    const back = engine.adoptSensor(switched);
+    assert.equal(back.sensorModel, 'optoNCDT 1900-10');
+    assert.deepEqual(back.profiles.map(p => p.id), before.profiles.map(p => p.id));
+  } finally {
+    engine.useSensor('ild1900');
+  }
+});
+
+test('identified native frames must match the currently adopted family and measuring window', () => {
+  const thermal = {
+    status: 'streaming', source: 'thermo-uc', unit: '°C', n: 50, current_valid: true,
+    info: { model: 'UC-SF22-S3', unit: '°C', range_min: -50, range_max: 900 },
+    value: 1.85, raw_value: 31.85, tare_mm: 30, dist_from_face_mm: null,
+    state_flags: { led: 'red' }, output: 'green',
+  };
+  const distance = {
+    status: 'streaming', source: 'serial-ild1900', n: 100, current_valid: true,
+    info: { model: 'ILD1900-10', unit: 'mm', range_mm: 10, smr_mm: 20 },
+    dist_from_face_mm: 25.123, state_flags: { led: 'green' },
+  };
+  try {
+    assert.equal(engine.matchesBackendSensor(thermal), true, 'the source is known before the app adopts it');
+    assert.deepEqual(engine.parseBridgeSample(thermal, true), { error: 'model' });
+    engine.useSensor('thermo_uc', thermal.info);
+    assert.deepEqual(engine.parseBridgeSample(thermal), {
+      value: 31.85, led: { state: 'unknown', output: 'unknown' },
+    });
+    assert.deepEqual(engine.parseBridgeSample(distance, true), { error: 'model' });
+    assert.deepEqual(engine.parseBridgeSample({ ...thermal, current_valid: false }, true), { error: 'signal' });
+    assert.deepEqual(engine.parseBridgeSample({ ...thermal, unit: 'mm' }, true), { error: 'model' });
+    assert.deepEqual(engine.parseBridgeSample({ ...thermal, info: { ...thermal.info, range_max: 600 } }, true), { error: 'model' });
+  } finally {
+    engine.useSensor('ild1900');
+  }
+});
+
+test('thermal bridge messages do not invent State or Output LEDs', () => {
+  try {
+    engine.useSensor('thermo_uc');
+    const frame = {
+      value: 24.1, unit: '°C', sensor: 'UC-SF22-S3', source: 'thermo-uc',
+      range_start: null, range_end: null, range: null, state: 'red', output: 'green',
+    };
+    assert.deepEqual(engine.parseBridgeSample(frame), { value: 24.1, led: { state: 'unknown', output: 'unknown' } });
+    assert.deepEqual(engine.bridgeLedState({ ...frame, source: 'replay' }), { state: 'unknown', output: 'unknown' });
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, current_valid: false }), { error: 'signal' });
+    assert.deepEqual(engine.parseBridgeSample({ ...frame, range_end: 600 }, true), { error: 'model' });
+  } finally {
+    engine.useSensor('ild1900');
+  }
+});
+
+test('CSV exports retain recorded units after switching the active sensor', async () => {
+  const distance = engine.createInitialState().recordings[0];
+  engine.useSensor('thermo_uc');
+  const thermal = engine.createInitialState().recordings[0];
+  engine.useSensor('ild1900');
+  let captured;
+  const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
+  globalThis.document = { createElement() { return { click() {}, remove() {} }; }, body: { append() {} } };
+  URL.createObjectURL = blob => { captured = blob; return 'blob:test'; };
+  URL.revokeObjectURL = () => {};
+  try {
+    assert.equal(engine.unitOf(thermal), '°C');
+    engine.exportRecordingCSV(thermal);
+    const temperatureCSV = await captured.text();
+    assert.match(temperatureCSV, /raw_temperature_c/);
+    assert.match(temperatureCSV, /°C/);
+    assert.doesNotMatch(temperatureCSV, /raw_distance_mm/);
+
+    engine.useSensor('thermo_uc');
+    assert.equal(engine.unitOf(distance), 'mm');
+    engine.exportRecordingCSV(distance);
+    const distanceCSV = await captured.text();
+    assert.match(distanceCSV, /raw_distance_mm/);
+    assert.doesNotMatch(distanceCSV, /raw_temperature_c/);
+    assert.equal(engine.unitOf({}), 'mm', 'legacy recordings still default to distance units');
+  } finally {
+    engine.useSensor('ild1900');
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    delete globalThis.document;
+  }
 });

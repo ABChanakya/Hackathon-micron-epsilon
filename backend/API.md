@@ -13,6 +13,7 @@ All bodies are JSON. Errors come back as HTTP 400 `{"detail": "<message>"}`, wit
     Verified on an ILD1420-50 and an ILD1900-10, and it works on macOS.
   - `REPLAY`: plays back a recording.
   - MEDAQLib sensor names: Windows/Linux only, untested.
+  - `thermo`: a thermoMETER UC infrared thermometer over ME-Bus (its 3.3 V TTL USB cable). Verified on a UC-SF22-S3.
 - The raw stream (up to 4 kHz) is reduced to **~25 frames/s** for the browser.
 - Invalid readings never appear as values. They are counted (`errors_in_window`) and described (`last_error`).
 - All distances are in **mm from the start of the measuring range**. `dist_from_face_mm` adds the start of the
@@ -24,7 +25,7 @@ Returned by `/api/status`, `/api/connect`, `/api/disconnect`, `/api/record/*`, `
 {
   "status": "disconnected | streaming | error",
   "error": "",
-  "source": "sim | serial-ild1420 | serial-ild1900 | replay | medaqlib | null",
+  "source": "sim | serial-ild1420 | serial-ild1900 | thermo-uc | replay | medaqlib | null",
   "info": {"model": "ILD1420-50", "serial": "15060171", "range_mm": 50.0, "smr_mm": 35, "firmware": "000.018", "unit": "mm"},
   "recording": false, "rec_file": null, "rec_samples": 0, "rec_label": null,
   "rec_until_s": null,              // seconds left of a timed recording
@@ -59,13 +60,15 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 ### `POST /api/connect`
 | Field | Example | Notes |
 |---|---|---|
-| `sensor` | `"SIM"`, `"ILD1420-serial"`, `"REPLAY"`, `"ILD1420"` | Source type |
+| `sensor` | `"SIM"`, `"ILD-serial"`, `"thermo"`, `"REPLAY"`, `"ILD1420"` | Source type |
 | `port` | `"/dev/cu.usbserial-000101"`, `"COM25"` | Serial. `ILD1420-serial` defaults to 921600 baud |
 | `channels` | `["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]` | Extra values per sample (default: all) |
 | `file` | `"rec_20261127_181128.csv"` | `REPLAY` only |
 | `speed`, `loop` | `1.0`, `true` | `REPLAY` only |
 | `restore_output` | `"ANALOG"` | `ILD1420-serial`: OUTPUT mode to set on disconnect |
-| `interface`, `baudrate`, `ip` | | MEDAQLib sensors only |
+| `address` | `126` | `thermo` ME-Bus address |
+| `baudrate` | `921600` or `115200` | Serial baud rate; defaults depend on source |
+| `interface`, `ip` | | MEDAQLib sensors only |
 
 ```json
 {"sensor": "SIM"}
@@ -124,16 +127,36 @@ Server → client only, about 25 frames/s while streaming:
 - `last_error.code`: 3 too much data for baudrate, 4 no peak, 5 peak before range, 6 peak after range, 7 cannot be calculated,
   8 global error, 9 peak too wide, 10 laser off.
 
+## Thermometer (`thermo`, thermoMETER UC over ME-Bus)
+Connect: `{"sensor": "thermo", "port": "/dev/cu.usbserial-FTA3RQ8E"}` (optional `"address": 126`, `"baudrate": 115200`).
+`info` is `{"model": "UC-SF22-S3", "unit": "°C", "range_min": -50, "range_max": 900, "channels": {...}}`.
+
+- The WebSocket frame is the same as for distance sensors, in °C: `value`, `min`, `max`, `mean`, `raw_value` (latest
+  reading, no tare), `unit: "°C"`, plus `head_c` (sensor head) and `electronics_c` (electronics) temperatures.
+  `dist_from_face_mm`, `intensity`, `state_flags` and `shutter_us` are null. About 55 readings per second.
+- `dropped_total` counts readings lost between sensor and computer (from the sensor's own 16-bit sample counter).
+- Recordings: CSV columns `t_s, wall_time, temp_c, error_code, counter, head_c, electronics_c`; the sidecar has `"unit": "°C"`
+  (its `min_mm`, `max_mm`, `mean_mm` are then in °C). Replay works the same way.
+- Settings are **read-only**: `POST /api/settings` and `/api/command` return HTTP 400. Emissivity and averaging stay as set on the sensor.
+- The protocol (PROFIBUS-style FDL telegrams at 115200 baud, 8E1) was taken from MEDAQLib's trace log in
+  `software/MEDAQLib_samples/` and verified on the sensor; details in `ThermoSource` in `sources.py`. The channel names come
+  from that log; that channel 2 is the sensor head and channel 3 the electronics follows MEDAQLib's order and is not otherwise confirmed.
+
+## Browser access (CORS)
+Pages on `localhost` or `127.0.0.1` (any port) may call the API, so the monitor website and the landing page can read
+`/api/status`. Other sites are refused.
+
 ## WebSocket `/ws/bridge` (for the sensor-monitor website in `frontend/`)
 The same live data as `/ws/stream`, in the message format that the website's "local sensor bridge" connection expects
 (`frontend/dist/app.js`, function `connectBridge`). In the website, enter `ws://localhost:8000/ws/bridge` as the bridge address.
 About 25 messages per second:
 ```json
 {
-  "value": 24.375,            // mm FROM THE SENSOR FACE (not from the start of the range). null = nothing valid right now
-  "unit": "mm",
+  "value": 24.375,            // distance sensors: mm FROM THE SENSOR FACE; thermometer: °C. null = nothing valid right now
+  "unit": "mm",               // "°C" for the thermometer
   "sensor": "ILD1900",        // the real model name from the sensor
   "source": "serial-ild1900",  // "replay" for recorded data, "sim" for simulation
+  "info": {"model": "ILD1900-10", "range_mm": 10, "smr_mm": 20, "unit": "mm"},
   "current_valid": true,      // false for a received frame without a valid measurement
   "state": "green",           // status LED: green | yellow | red | off | unknown
   "output": "green",          // output LED: "green" while the RS422 stream runs
@@ -147,10 +170,13 @@ About 25 messages per second:
   `current_valid: false` mean that a frame arrived without a valid measurement. A UI should show "no target" with `error`,
   keep its connection alive and avoid adding a measurement point.
 - Check the sensor model and measuring window before displaying values. `source` distinguishes hardware, simulation and replay.
+- `info` carries the same source metadata as the native stream. For thermometers, use `info.range_min` and `info.range_max`;
+  the distance-specific `range_start`, `range_end` and `range` fields are null.
 - A browser page served over `https://` may refuse `ws://localhost` (Safari does). Open the website over `http://` locally.
 
-The included monitor is configured for the optoNCDT 1900-10 (20–30 mm from the face). Other connected models remain
-available through this API and the diagnostics page; clients must validate model and range against their selected profile.
+The included monitor supports optoNCDT 1900-10 distance measurements (20–30 mm from the face) and thermoMETER UC
+temperatures. Other connected models remain available through this API and the diagnostics page; clients must validate
+model, unit and measuring range against their selected profile.
 
 ## Recordings
 `backend/recordings/rec_YYYYMMDD_HHMMSS.csv`, with one row per sensor sample:

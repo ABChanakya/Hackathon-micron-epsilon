@@ -1,6 +1,6 @@
 # Micro-Epsilon · Sensor Monitor
 
-Browser-Messplatz für den optoNCDT 1900-10. Der Sensor erfasst Abstände von 20 bis 30 mm ab Sensorfront. Laufende Messungen lassen sich mit Zeitmarken aufzeichnen, vergleichen und als CSV oder PDF exportieren.
+Browser-Messplatz für den optoNCDT 1900-10 und thermoMETER UC. Die Sensorverbindung schaltet Einheit, Messbereich und Profile automatisch zwischen mm und °C um. Aufzeichnungen behalten beim Sensorwechsel ihre eigene Einheit. Der Sensor erfasst Abstände von 20 bis 30 mm ab Sensorfront. Laufende Messungen lassen sich mit Zeitmarken aufzeichnen, vergleichen und als CSV oder PDF exportieren.
 
 Das interaktive 3D-Modell orientiert sich an Maßzeichnung und Bedienfeld der Betriebsanleitung. Die Montagebohrungen, Optik, Kabeldurchführung und LEDs sind am Modell dargestellt. Das Kabel ist für die Bildschirmansicht gekürzt. Beim Klick auf eine LED erscheint ihre Bedeutung. [Betriebsanleitung, S. 18–19, 31 und 33](https://www.micro-epsilon.de/fileadmin/download/manuals/man--optoNCDT-1900--de.pdf)
 

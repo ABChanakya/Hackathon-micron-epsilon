@@ -1,6 +1,6 @@
 # Micro-Epsilon · Sensor Monitor
 
-Live-Messplatz für den optoNCDT 1900-10 mit Diagramm, Aufzeichnung und CSV-/PDF-Export.
+Live-Messplatz für den optoNCDT 1900-10 und thermoMETER UC mit Diagramm, Aufzeichnung und CSV-/PDF-Export. Die Anzeige und Messprofile wechseln passend zum Sensor zwischen mm und °C; gespeicherte Aufzeichnungen behalten ihre Einheit.
 
 ## Start
 
@@ -12,7 +12,7 @@ Python 3.10 oder neuer muss installiert sein. Im Repository:
 
 Der erste Start installiert die Python-Abhängigkeiten in `backend/.venv`.
 Öffne anschließend **http://127.0.0.1:8000/** und klicke auf **Sensor verbinden**.
-Der Anschluss wird automatisch gefunden; bei mehreren USB-Geräten wählst du ihn aus.
+Der Anschluss wird automatisch gefunden; bei mehreren USB-Geräten wählst du Anschluss und Sensortyp aus.
 Schließe vorher sensorTOOL oder andere Programme, die denselben Sensor verwenden.
 Eine bereits aktive Backend-Verbindung wird beim Öffnen sofort angezeigt.
 

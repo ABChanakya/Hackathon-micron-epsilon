@@ -1,5 +1,6 @@
 """In-process checks: no network listener or real sensor is opened."""
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,23 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app as backend
 from hub import Hub
+
+
+class ThermalFixture:
+    """Deterministic temperature source; never opens a serial device."""
+    kind = "thermo-uc"
+    rate_hz = 50.0
+    info = {"model": "UC-SF22-S3", "unit": "°C", "quantity": "temperature", "range_min": -50, "range_max": 900}
+
+    def open(self, cfg):
+        pass
+
+    def close(self):
+        pass
+
+    def read(self):
+        time.sleep(0.02)
+        return [{"dist": 25.25, "head_c": 26.5, "electronics_c": 27.75}]
 
 
 class DashboardTests(unittest.TestCase):
@@ -60,9 +78,45 @@ class DashboardTests(unittest.TestCase):
             bridge = socket.receive_json()
         self.assertEqual(bridge["source"], "sim")
         self.assertEqual(bridge["sensor"], frame["info"]["model"])
+        self.assertEqual(bridge["info"], frame["info"])
         self.assertIsInstance(bridge["current_valid"], bool)
         self.assertEqual(bridge["range_start"], 35)
         self.assertEqual(bridge["range_end"], 85)
+
+    def test_thermal_frames_preserve_temperature_metadata_and_ignore_display_tare_in_bridge(self):
+        with patch.object(backend.hubmod, "ThermoSource", ThermalFixture):
+            response = self.client.post("/api/connect", json={"sensor": "thermo", "port": "fixture-only"})
+            self.assertEqual(response.status_code, 200)
+            with self.client.websocket_connect("/ws/stream") as socket:
+                frame = socket.receive_json()
+            self.assertEqual(frame["source"], "thermo-uc")
+            self.assertEqual(frame["info"]["model"], "UC-SF22-S3")
+            self.assertEqual(frame["unit"], "°C")
+            self.assertEqual(frame["raw_value"], 25.25)
+            self.assertEqual(frame["head_c"], 26.5)
+            self.assertEqual(frame["electronics_c"], 27.75)
+            self.assertIsNone(frame["dist_from_face_mm"])
+            self.assertIsNone(frame["state_flags"])
+            self.assertEqual(self.client.post("/api/tare", json={"on": True}).status_code, 200)
+            with self.client.websocket_connect("/ws/stream") as socket:
+                zeroed = socket.receive_json()
+            self.assertEqual(zeroed["value"], 0)
+            self.assertEqual(zeroed["raw_value"], 25.25)
+            with self.client.websocket_connect("/ws/bridge") as socket:
+                bridge = socket.receive_json()
+            self.assertEqual(bridge["source"], "thermo-uc")
+            self.assertEqual(bridge["unit"], "°C")
+            self.assertEqual(bridge["info"]["unit"], "°C")
+            self.assertEqual(bridge["info"]["model"], "UC-SF22-S3")
+            self.assertEqual(bridge["info"]["range_min"], -50)
+            self.assertEqual(bridge["info"]["range_max"], 900)
+            self.assertEqual(bridge["value"], 25.25)
+            self.assertTrue(bridge["current_valid"])
+            self.assertEqual(bridge["state"], "unknown")
+            self.assertEqual(bridge["output"], "green")
+            invalid = self.hub.bridge_message({**frame, "current_valid": False})
+            self.assertFalse(invalid["current_valid"])
+            self.assertIsNone(invalid["value"])
 
 
 if __name__ == "__main__":

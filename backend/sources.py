@@ -6,10 +6,11 @@
 Each sample is a dict. "dist" is always present: distance in mm, or ERR_BASE - code for an invalid reading
 (MEDAQLib convention, MEDAQLib.pdf p.135). Optional extras: counter, sensor_ts_ms, intensity_pct, shutter_us, state.
 """
-import contextlib, csv, json, math, os, random, re, time
+import contextlib, csv, json, math, os, random, re, struct, time
 
 ERR_BASE = -1e10
-EXTRA_KEYS = ("counter", "sensor_ts_ms", "intensity_pct", "shutter_us", "state")
+EXTRA_KEYS = ("counter", "sensor_ts_ms", "intensity_pct", "shutter_us", "state", "head_c", "electronics_c")
+FLOAT_KEYS = ("sensor_ts_ms", "intensity_pct", "shutter_us", "head_c", "electronics_c")
 
 SERIAL_OPTIONS = {"rate_khz": [0.25, 0.5, 1, 2, 4, 8],
                   "averaging": {"NONE": [], "MOVING": [2, 4, 8, 16, 32, 64, 128],
@@ -511,6 +512,140 @@ class SerialSource:
             return self._ascii(line)   # raw ASCII command, e.g. {"cmd":"AVERAGE","params":{"args":"MEDIAN 9"}}
 
 
+class ThermoSource:
+    """thermoMETER UC infrared thermometer over ME-Bus, through its 3.3 V TTL USB cable (pyserial, no MEDAQLib).
+
+    ME-Bus uses PROFIBUS-style FDL telegrams at 115200 baud, 8 data bits, EVEN parity, 1 stop bit. The telegrams below
+    were taken from MEDAQLib's own trace log (software/MEDAQLib_samples/SensorLog_*.txt) and verified on a UC-SF22-S3:
+      SD1 (no data)  10 DA SA FC FCS 16                 FCS = (DA + SA + FC) & 0xFF
+      SD2 (data)     68 LE LE 68 DA SA FC data FCS 16   LE = len(DA..data), FCS = sum(DA..data) & 0xFF
+      FDL status     FC 0x09            -> 10 01 7E 80 FF 16
+      identity       SD2, FC 0x4C, data 30 33 5E 10 00 4A (DP-V1 read, block 0x10, 74 bytes) -> contains "UC-SF22-S3"
+      data exchange  SD1, FC 0x4C       -> SD2 whose data is: 80 84 83, seq (uint16 LE), n, 0, 0, then 3*n float32 LE
+                                           grouped by channel: n x process temperature, n x sensor head, n x electronics
+    seq is the running number of the frame's first sample; the sensor buffers at most 19 samples (about 50 per second),
+    so this driver polls every 80 ms. Channel names come from MEDAQLib's log (IA_Raw_Name1..3); the order of channel 2
+    (sensor head) and 3 (electronics) follows MEDAQLib's list and is not otherwise confirmed."""
+    kind = "thermo-uc"
+    counter_mod = 65536
+    CSV_EXTRAS = ("counter", "head_c", "electronics_c")
+    RANGES = {"SF02": (-50, 600), "SF15": (-50, 600), "SF22": (-50, 900)}   # thermoMETER UC manual p.7
+    POLL_S = 0.08
+
+    def __init__(self):
+        self.ser = None
+        self.addr, self.master = 126, 1
+        self.rate_hz = 50.0
+        self.info = {}
+        self._last_poll = 0.0
+        self._last_rx = 0.0
+        self._rate_t0 = None
+        self._rate_seq0 = None
+
+    # ---- telegrams ------------------------------------------------------------------------
+    def _sd1(self, fc):
+        return bytes([0x10, self.addr, self.master, fc, (self.addr + self.master + fc) & 0xFF, 0x16])
+
+    def _sd2(self, fc, data):
+        body = [self.addr, self.master, fc] + list(data)
+        return bytes([0x68, len(body), len(body), 0x68] + body + [sum(body) & 0xFF, 0x16])
+
+    def _xfer(self, frame, timeout=0.3):
+        """Send one telegram and return the complete, checksum-valid answer (or None)."""
+        self.ser.reset_input_buffer()
+        self.ser.write(frame)
+        buf, end = b"", time.time() + timeout
+        while time.time() < end:
+            buf += self.ser.read(max(self.ser.in_waiting, 1))
+            if buf[:1] == b"\x10" and len(buf) >= 6:
+                f = buf[:6]
+                return f if f[5] == 0x16 and (f[1] + f[2] + f[3]) & 0xFF == f[4] else None
+            if buf[:1] == b"\x68" and len(buf) >= 4 and len(buf) >= buf[1] + 6:
+                le = buf[1]; f = buf[:le + 6]
+                ok = f[2] == le and f[3] == 0x68 and f[-1] == 0x16 and sum(f[4:4 + le]) & 0xFF == f[4 + le]
+                return f if ok else None
+            if buf[:1] and buf[:1] not in (b"\x10", b"\x68"):
+                buf = buf[1:]                                   # resync on stray bytes
+        return None
+
+    def open(self, cfg):
+        import serial
+        port = cfg.get("port")
+        if not port:
+            raise RuntimeError("port required, e.g. /dev/cu.usbserial-FTA3RQ8E")
+        self.addr = int(cfg.get("address") or 126)
+        baud = int(cfg.get("baudrate") or 115200)
+        self.ser = serial.Serial(port, baud, bytesize=8, parity=serial.PARITY_EVEN, stopbits=1, timeout=0.02)
+        try:
+            if not self._xfer(self._sd1(0x09)):
+                raise RuntimeError(f"no ME-Bus answer at address {self.addr} on {port} ({baud} baud, 8E1)")
+            ident = self._xfer(self._sd2(0x4C, [0x30, 0x33, 0x5E, 0x10, 0x00, 0x4A]), 0.5) or b""
+            m = re.search(rb"UC-[A-Z0-9]+(?:-[A-Z0-9]+)*", ident)
+            model = m.group(0).decode() if m else "thermoMETER UC"
+            series = re.search(r"SF\d\d", model)
+            lo, hi = self.RANGES.get(series.group(0) if series else "", (-50, 900))
+            self.info = {"model": model, "name": "thermoMETER UC", "unit": "°C", "quantity": "temperature",
+                         "range_min": lo, "range_max": hi, "address": self.addr,
+                         "channels": {"value": "process temperature", "head_c": "sensor head temperature",
+                                      "electronics_c": "electronics temperature"}}
+            self._last_rx = time.time()
+        except Exception:
+            self.close()
+            raise
+
+    def close(self):
+        if self.ser:
+            try:
+                self.ser.close()
+            finally:
+                self.ser = None
+
+    def read(self):
+        wait = self.POLL_S - (time.time() - self._last_poll)
+        if wait > 0:
+            time.sleep(wait)
+        self._last_poll = time.time()
+        f = self._xfer(self._sd1(0x4C))
+        now = time.time()
+        if not f or f[0] != 0x68:
+            if now - self._last_rx > 3:
+                raise RuntimeError("no data from the thermometer for 3 s (cable, power or address?)")
+            return []
+        body = f[7:4 + f[1]]
+        if len(body) < 8 or body[:3] != b"\x80\x84\x83":
+            return []
+        seq, n = body[3] | body[4] << 8, body[5]
+        if n == 0 or len(body) < 8 + 12 * n:
+            self._last_rx = now
+            return []
+        vals = struct.unpack_from(f"<{3 * n}f", body, 8)
+        proc, head, elec = vals[:n], vals[n:2 * n], vals[2 * n:]
+        out = []
+        for i in range(n):
+            v = proc[i]
+            ok = math.isfinite(v) and -100.0 < v < 2000.0
+            out.append({"dist": round(v, 4) if ok else ERR_BASE - 7, "counter": (seq + i) % 65536,
+                        "head_c": round(head[i], 3), "electronics_c": round(elec[i], 3)})
+        self._last_rx = now
+        if self._rate_t0 is None:
+            self._rate_t0, self._rate_seq0 = now, seq
+        elif now - self._rate_t0 > 2:                           # measured sample rate from the sensor's own counter
+            self.rate_hz = ((seq + n - self._rate_seq0) % 65536) / (now - self._rate_t0)
+            self._rate_t0, self._rate_seq0 = now, seq + n
+        return out
+
+    def settings(self):
+        ch = ["process temperature", "sensor head temperature", "electronics temperature"]
+        return {"rate_khz": round(self.rate_hz / 1000.0, 4), "averaging": None, "channels": ch, "channels_active": ch,
+                "options": {}, "read_only": True}
+
+    def apply(self, body):
+        raise RuntimeError("the thermoMETER driver is read-only: its settings cannot be changed from here yet")
+
+    def command(self, cmd, params):
+        raise RuntimeError("the thermoMETER driver is read-only: commands are not supported")
+
+
 class ReplaySource:
     """Plays a recording back through the normal pipeline, paced by its t_s column, so the UI works without hardware."""
     kind = "replay"
@@ -531,7 +666,7 @@ class ReplaySource:
                     t = float(row["t_s"])
                 except (KeyError, ValueError):
                     continue
-                d = row.get("dist_mm", row.get("value", ""))
+                d = row.get("dist_mm") or row.get("temp_c") or row.get("value") or ""
                 code = row.get("error_code") or (d[3:] if d.startswith("ERR") else "")
                 if code:
                     s = {"dist": ERR_BASE - int(code)}
@@ -541,7 +676,7 @@ class ReplaySource:
                     continue
                 for k in EXTRA_KEYS:
                     if row.get(k) not in (None, ""):
-                        s[k] = float(row[k]) if k in ("sensor_ts_ms", "intensity_pct", "shutter_us") else int(float(row[k]))
+                        s[k] = float(row[k]) if k in FLOAT_KEYS else int(float(row[k]))
                 ts.append(t); samples.append(s)
         if not samples:
             raise RuntimeError(f"recording {name} has no samples")

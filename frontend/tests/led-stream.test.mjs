@@ -8,6 +8,14 @@ const start = appSource.indexOf('function connectBridge(');
 const end = appSource.indexOf('\nfunction connectionFailed', start);
 assert.ok(start >= 0 && end > start, 'the production bridge connection function is available');
 const connectionSource = appSource.slice(start, end);
+function productionFunction(startMarker, endMarker) {
+  const first = appSource.indexOf(startMarker), last = appSource.indexOf(endMarker, first);
+  assert.ok(first >= 0 && last > first, `${startMarker} is available`);
+  return appSource.slice(first, last);
+}
+const switchSource = productionFunction('function switchSensor(', '\nasync function verifyBackend');
+const finishSource = productionFunction('function finishRecord(', '\nfunction saveRecording');
+const interruptSource = productionFunction('function interruptRecord(', '\nfunction useDemo');
 const dataSource = await readFile(new URL('../dist/data.js', import.meta.url), 'utf8');
 const engine = await import(`data:text/javascript;base64,${Buffer.from(dataSource).toString('base64')}`);
 
@@ -21,37 +29,53 @@ function frame(overrides = {}) {
 }
 
 function harness() {
-  const values = [], updates = [], renders = [], failures = [];
+  engine.useSensor('ild1900');
+  const values = [], updates = [], renders = [], failures = [], events = [];
   let interruptions = 0, clock = 0;
-  const rt = { bridgeUrl: 'ws://localhost:8000/ws/stream', record: null, socket: null };
+  const rt = { bridgeUrl: 'ws://localhost:8000/ws/stream', record: null, socket: null, window: 30 };
   const snapshot = () => ({ led: { ...rt.led }, invalidSignal: rt.invalidSignal });
   class TestSocket { close() {} }
   const context = vm.createContext({
-    rt, URL, WebSocket: TestSocket,
+    rt, URL, WebSocket: TestSocket, state: engine.createInitialState(), dialogType: '',
     SENSOR: engine.SENSOR,
-    physicalRange: '20–30 mm',
+    clone: structuredClone,
+    rangeText: () => `${engine.SENSOR.rangeStart}–${engine.SENSOR.rangeEnd} ${engine.SENSOR.unit}`,
     matchesBackendSensor: engine.matchesBackendSensor,
     parseBridgeSample: engine.parseBridgeSample,
     bridgeLedState: engine.bridgeLedState,
+    sensorFromStatus: engine.sensorFromStatus,
+    useSensor: engine.useSensor,
+    adoptSensor: engine.adoptSensor,
+    profile: () => context.state.profiles.find(p => p.id === context.state.activeProfileId) || context.state.profiles[0],
+    persist() { events.push({ type: 'persist', profileUnit: context.state.profiles[0].unit }); },
     $: () => null,
     setTimeout: () => 1,
     clearTimeout() {},
     performance: { now: () => clock += 40 },
-    closeDialog() {},
+    closeDialog() { context.dialogType = ''; },
     toast() {},
     render() { renders.push(snapshot()); },
     updateLive() { updates.push(snapshot()); },
-    addValue(value, { led }) { values.push(value); rt.value = value; rt.led = led; },
-    interruptRecord() { interruptions++; rt.record = null; },
+    addValue(value, { led }) {
+      values.push(value); rt.value = value; rt.led = led;
+      rt.points.push({ value, unit: engine.SENSOR.unit });
+    },
     disconnectSocket() { rt.socket?.close(); rt.socket = null; },
     connectionFailed(message) { failures.push(message); },
     verifyBackend() { throw new Error('identified native frames must not require another request'); },
     refreshBackend() { throw new Error('streaming frames must not trigger source discovery'); },
   });
-  vm.runInContext(connectionSource, context);
+  vm.runInContext([finishSource, interruptSource, switchSource, connectionSource].join('\n'), context);
+  const interrupt = vm.runInContext('interruptRecord', context);
+  context.interruptRecord = () => {
+    interruptions++;
+    events.push({ type: 'interrupt', profileUnit: context.state.profiles[0].unit });
+    interrupt();
+  };
   vm.runInContext('connectBridge(true)', context);
   return {
-    rt, values, updates, renders, failures,
+    rt, values, updates, renders, failures, events,
+    get state() { return context.state; },
     get interruptions() { return interruptions; },
     send: payload => rt.socket.onmessage({ data: JSON.stringify(payload) }),
   };
@@ -60,7 +84,7 @@ function harness() {
 test('invalid frames keep updating sensor LEDs without repeatedly interrupting the recording', async () => {
   const h = harness();
   await h.send(frame());
-  h.rt.record = { points: [{ value: 25 }] };
+  h.rt.record = { source: 'sensor', points: [{ value: 25 }], startElapsed: 0 };
   const invalid = { dist_from_face_mm: null, n: 0, current_valid: false, last_error: { text: 'no peak/edge' } };
 
   await h.send(frame({ ...invalid, state_flags: { led: 'red' } }));
@@ -77,6 +101,71 @@ test('invalid frames keep updating sensor LEDs without repeatedly interrupting t
   assert.equal(h.interruptions, 1, 'later invalid frames must not interrupt the same recording again');
   assert.deepEqual(h.values, [25], 'invalid frames never add a stale distance to the plot');
   assert.deepEqual(h.failures, []);
+});
+
+test('native thermometer frames adopt Celsius before parsing and finish old distance recordings in millimetres', async () => {
+  const h = harness();
+  try {
+    await h.send(frame());
+    const oldModel = engine.SENSOR.model;
+    h.rt.elapsed = 8;
+    h.rt.paused = true;
+    h.rt.zeroOffset = 25;
+    h.rt.record = {
+      source: 'sensor', sensor: oldModel,
+      points: [{ t: 0, value: 25 }, { t: 1, value: 25.001 }], startElapsed: 2,
+    };
+    await h.send({
+      status: 'streaming', source: 'thermo-uc', unit: '°C',
+      info: { model: 'UC-SF22-S3', unit: '°C', range_min: -50, range_max: 900 },
+      dist_from_face_mm: null, raw_value: 31.85, value: 1.85, n: 50, current_valid: true,
+      state_flags: null, output: 'green',
+    });
+
+    assert.equal(engine.SENSOR.id, 'thermo_uc');
+    assert.equal(engine.SENSOR.unit, '°C');
+    assert.ok(h.state.profiles.every(p => p.unit === '°C'));
+    assert.deepEqual(h.values, [25, 31.85], 'the native absolute temperature is used instead of the tared value');
+    assert.equal(h.rt.value, 31.85);
+    assert.equal(h.rt.paused, false, 'a new family must not inherit a paused distance display');
+    assert.equal(h.rt.zeroOffset, 0);
+    assert.equal(h.rt.points.length, 1, 'temperature points start a new chart');
+    assert.equal(h.rt.points[0].unit, '°C');
+    assert.deepEqual(h.rt.led, { state: 'unknown', output: 'unknown' });
+    assert.deepEqual(h.events.slice(0, 2), [
+      { type: 'interrupt', profileUnit: 'mm' },
+      { type: 'persist', profileUnit: '°C' },
+    ]);
+    assert.equal(h.interruptions, 1);
+    assert.equal(h.rt.record, null);
+    assert.equal(h.rt.unsaved.sensor, oldModel);
+    assert.equal(h.rt.unsaved.interrupted, true);
+    assert.equal(engine.unitOf(h.rt.unsaved), 'mm', 'old recording profiles are captured before adopting Celsius');
+    assert.equal(h.rt.unsaved.duration, 6);
+    assert.deepEqual(h.failures, []);
+  } finally {
+    engine.useSensor('ild1900');
+  }
+});
+
+test('legacy thermal bridge frames with null distance ranges adopt the thermometer without inventing LEDs', async () => {
+  const h = harness();
+  try {
+    await h.send({
+      value: 29.4, unit: '°C', sensor: 'UC-SF22-S3', source: 'thermo-uc',
+      range_start: null, range_end: null, range: null,
+      state: 'red', output: 'green', current_valid: true,
+    });
+    assert.equal(engine.SENSOR.id, 'thermo_uc');
+    assert.equal(engine.SENSOR.unit, '°C');
+    assert.equal(h.state.sensorId, 'thermo_uc');
+    assert.deepEqual(h.values, [29.4]);
+    assert.deepEqual(h.rt.led, { state: 'unknown', output: 'unknown' });
+    assert.equal(h.rt.invalidSignal, false);
+    assert.deepEqual(h.failures, []);
+  } finally {
+    engine.useSensor('ild1900');
+  }
 });
 
 test('pausing distance display keeps live LED state updates active', async () => {
