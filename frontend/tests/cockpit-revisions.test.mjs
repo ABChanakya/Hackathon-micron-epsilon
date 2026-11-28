@@ -209,3 +209,33 @@ test('connection questions reach the local model with the selected language',asy
     assert.equal(sent.at(-1).text,query);
   }
 });
+
+test('the first live sample outside limits alarms once and new episodes sound during feedback cooldown', () => {
+  const h = harness();
+  h.run("playAlertSound=()=>effects.push('beep');refreshSuggest=()=>{};rt.connected=true;rt.mode='bridge'");
+  h.run('addValue(profile().learnedUpper + .01, {elapsed:0});addValue(profile().learnedUpper + .02, {elapsed:.1})');
+  assert.deepEqual(h.effects, ['beep']);
+  assert.equal(h.run('rt.errorTotal'), 1);
+  h.run('addValue(profile().target, {elapsed:.2});rt.cooldown=30;rt.deviation={ml:{id:"waiting"}};addValue(profile().learnedUpper + .02, {elapsed:.3})');
+  assert.deepEqual(h.effects, ['beep', 'beep']);
+  assert.equal(h.run('rt.deviation.ml.id'), 'waiting');
+});
+
+test('live ML errors and fresh alerts rearm after recovery, independently of the feedback card', () => {
+  const h = harness();
+  h.run("playAlertSound=()=>effects.push('beep');rt.deviation={ml:{id:'previous'}}");
+  const frame = data => h.run(`mlFrame(${JSON.stringify(data)})`);
+  const pending = {id:'new-event', reason:'mean', score:8};
+  frame({state:'error', reason:'dropped_samples'});
+  frame({state:'error', reason:'dropped_samples'});
+  frame({state:'watching', pending:{id:'stale'}});
+  assert.deepEqual(h.effects, ['beep']);
+  frame({state:'alert', pending});
+  frame({state:'alert', pending});
+  frame({state:'watching', pending});
+  frame({state:'alert', pending});
+  assert.deepEqual(h.effects, ['beep', 'beep']);
+  assert.equal(h.run('rt.deviation.ml.id'), 'previous');
+  frame({state:'alert', known:{id:'known', reason:'intensity'}});
+  assert.deepEqual(h.effects, ['beep', 'beep', 'beep']);
+});
