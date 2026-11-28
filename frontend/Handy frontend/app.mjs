@@ -4,7 +4,7 @@ import { chartData, describeError } from './recordings.mjs';
 import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs?v=fixed-sections';
 import { createLiveView } from './live-view.mjs?v=phone-pc-1';
 import { buildSlopeSeries } from '/measurement-series.js?v=slope-1';
-import { mountFactoryPlan } from './fabrikplan/karte.mjs';
+import { mountFactoryPlan } from './fabrikplan/karte.mjs?v=theme-live-1';
 import { createSensorDemo, recordingSection } from './fabrikplan/sensor-demo.mjs';
 
 const byId = (id) => document.getElementById(id);
@@ -446,6 +446,12 @@ window.addEventListener('resize', () => drawChart());
 if (activeLive) selectView(true);
 clearFactorySelection = mountFactoryPlan(byId('main'), {
   selectSensor(sensor) {
+    if (sensor.live) {
+      selectView(true);
+      byId('live-title').focus({ preventScroll: true });
+      byId('live-view').scrollIntoView({ block: 'start' });
+      return;
+    }
     byId('demo-state').setAttribute('role', 'status');
     const dataset = DEMO_DATASETS.find(({ id }) => id === sensor.demoId);
     sensorDemo.open(sensor, dataset);

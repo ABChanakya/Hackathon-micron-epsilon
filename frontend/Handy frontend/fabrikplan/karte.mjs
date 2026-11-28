@@ -1,7 +1,8 @@
 // Factory plan: zoomed out it is the floor plan with the modules on it; zoomed in (+, pinch, Ctrl + wheel, or a tap on
 // a group) it becomes a grid of module boxes that keeps each module's place on the plan (top right stays top right).
 // A module whose sensor is out of its limits blinks red on the plan and in the grid. "Fehler simulieren" makes one
-// sensor spike, for demos and tests.
+// sensor spike, for demos and tests. With a real sensor connected to the measuring server, one module shows its live
+// values (LIVE) and its alarm is the server's. The floor plan follows the page's light or dark colour scheme.
 import { createFactorySim, gridLayout, worstAlarm } from './fabrik-sim.mjs';
 
 const width = 1400;
@@ -33,7 +34,9 @@ function marker(markers, text, activate) {
   return button;
 }
 
-export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = false, controlsId = 'recorded-view', language = '', text } = {}) {
+// Options: selectSensor(sensor) when a sensor is chosen (sensor.live for the one a real sensor drives), onAlarm({ key,
+// label, active, text }) when a simulated module starts or stops an alarm (the live one is reported by the monitor itself).
+export function mountFactoryPlan(parent, { selectSensor = () => {}, onAlarm = () => {}, expanded = false, controlsId = 'recorded-view', language = '', text } = {}) {
   let disposed = false;
   const instance = ++planSequence;
   const contentId = 'factory-content-' + instance, titleId = 'factory-title-' + instance, hintId = 'factory-hint-' + instance;
@@ -98,6 +101,43 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
   let mode = 'map';
   let modelRenderer;
   const selectable = [];   // every button that selects a sensor (map and grid), for aria-pressed
+  let liveKey = null;      // the head a real, live sensor drives (see "live sensor" below)
+
+  // ---- floor plan in the page's colour scheme ------------------------------------------------------
+  // The plan is an SVG image, so it cannot inherit the page's colours. In the light scheme a recoloured copy is shown.
+  const floorSvg = new URL('./grundriss.svg', import.meta.url);
+  const lightFloorColors = new Map([
+    ['#151d26', '#f6f8fa'], ['#2a3642', '#dce3e9'], ['#263543', '#e5ebf0'],
+    ['#243342', '#d9e2e9'], ['#273747', '#e4eaf0'], ['#394b5c', '#d1dce4'],
+    ['#415163', '#b9c7d1'], ['#657986', '#71899a'], ['#65798d', '#71899a'],
+    ['#657e963d', '#52687955'], ['#768da0', '#71899a'], ['#8395a6', '#71899a'],
+    ['#8fa4b7', '#60798d'], ['#9eafbf', '#60798d'], ['#b0c1d1', '#526879'],
+    ['#9eb8d055', '#52687944'], ['#e9edf1', '#18212a'], ['#c1cfdb', '#405260'],
+    ['#b6c8d9', '#405260'],
+  ]);
+  let floorSource = null, floorUrl = null, themeObserver = null;
+  const lightScheme = () => globalThis.document?.documentElement?.dataset?.theme !== 'dark';
+  async function showFloor() {
+    if (disposed) return;
+    if (!floor.getAttribute('src')) floor.src = floorSvg;              // shown at once; recoloured below when light
+    if (typeof fetch !== 'function' || typeof Blob !== 'function' || !globalThis.URL?.createObjectURL) return;
+    try {
+      floorSource ??= fetch(floorSvg).then(response => response.ok ? response.text() : Promise.reject(new Error(String(response.status))));
+      let svg = await floorSource;
+      if (disposed) return;
+      if (floorUrl) { URL.revokeObjectURL(floorUrl); floorUrl = null; }
+      if (!lightScheme()) { floor.src = floorSvg; return; }
+      for (const [from, to] of lightFloorColors) svg = svg.replaceAll(from, to);
+      floorUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      floor.src = floorUrl;
+    } catch {
+      floorSource = null;                                               // keep the original plan; try again next time
+    }
+  }
+  if (typeof MutationObserver === 'function' && globalThis.document?.documentElement) {
+    themeObserver = new MutationObserver(() => { if (floor.getAttribute('src')) showFloor(); });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
 
   // ---- sensors -------------------------------------------------------------------------------
   const heads = [];
@@ -114,7 +154,9 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
   function choose(head) {
     if (disposed) return;
     for (const item of selectable) item.setAttribute('aria-pressed', String(item.dataset.sensorKey === head.key));
-    selectSensor({ ...head.sensor, key: head.key, source: 'demo', simulated: true });
+    selectSensor(head.key === liveKey
+      ? { ...head.sensor, key: head.key, source: 'live', live: true }
+      : { ...head.sensor, key: head.key, source: 'demo', simulated: true });
   }
 
   // ---- plan (zoomed out) ------------------------------------------------------------------------
@@ -191,7 +233,7 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
       button.dataset.sensorKey = head.key;
       button.innerHTML = `<img class="factory-tile-model" alt="" hidden><span class="factory-tile-name"></span>
         <span class="factory-tile-quantity"></span><span class="factory-tile-value"><b>—</b> <small></small></span>
-        <span class="factory-tile-state">In Ordnung</span>`;
+        <span class="factory-tile-state">In Ordnung</span><span class="factory-live" hidden>LIVE</span>`;
       button.querySelector('.factory-tile-name').textContent = station.model + (head.suffix ? ' · Messkopf ' + head.suffix : '');
       button.querySelector('.factory-tile-quantity').textContent = station.quantity;
       button.querySelector('small').textContent = station.unit;
@@ -199,7 +241,7 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
       selectable.push(button);
       list.append(button);
       tilesByKey.set(head.key, { button, value: button.querySelector('b'), state: button.querySelector('.factory-tile-state'),
-        model: button.querySelector('.factory-tile-model'), head });
+        model: button.querySelector('.factory-tile-model'), live: button.querySelector('.factory-live'), head });
     }
     const ack = box.querySelector('.factory-ack');
     ack.addEventListener('click', () => { for (const head of own) sim.acknowledge(head.key); update(); });
@@ -295,13 +337,26 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
     const active = [];
     for (const r of readings) {
       const tile = tilesByKey.get(r.key);
-      tile.value.textContent = format(r.value, r.digits);
+      const head = tile.head;
+      const shown = r.value === null ? '—' : format(r.value, r.digits);
+      tile.value.textContent = shown;
       tile.button.dataset.alarm = r.alarm;
-      tile.state.textContent = alarmText(r.alarm);
+      tile.state.textContent = alarmText(r.alarm) + (r.live && r.reason ? ' · ' + r.reason : '');
+      if (tile.live.hidden === Boolean(r.live)) {
+        tile.live.hidden = !r.live;
+        tile.button.setAttribute('aria-label', r.live ? t('liveSensor', { sensor: headName(head) }, '{sensor} · Live-Werte des angeschlossenen Sensors')
+          : t('simulatedSensor', { sensor: headName(head) }, '{sensor} · simulierte Werte'));
+      }
       if (r.alarm === 'active') active.push(r);
+      const limits = { sensor: headName(head), value: shown, unit: r.unit, lower: format(r.lower, r.digits), upper: format(r.upper, r.digits) };
+      if (!r.live && (r.alarm === 'active') !== (seen.get(r.key) === 'active')) {
+        onAlarm({ key: r.key, label: headName(head), active: r.alarm === 'active',
+          text: t('alarmValue', limits, 'Alarm: {sensor}: {value} {unit} (Grenzen {lower}–{upper} {unit})') });
+      }
       if (r.alarm === 'active' && seen.get(r.key) !== 'active') {
-        const head = tile.head;
-        status.textContent = t('alarmValue', { sensor: headName(head), value: format(r.value, r.digits), unit: r.unit, lower: format(r.lower, r.digits), upper: format(r.upper, r.digits) }, 'Alarm: {sensor}: {value} {unit} (Grenzen {lower}–{upper} {unit})');
+        status.textContent = r.live
+          ? t('liveAlarm', { sensor: headName(head), value: shown, unit: r.value === null ? '' : r.unit }, 'Alarm (live): {sensor}: {value} {unit}').trim() + (r.reason ? ' · ' + r.reason : '')
+          : t('alarmValue', limits, 'Alarm: {sensor}: {value} {unit} (Grenzen {lower}–{upper} {unit})');
       }
       seen.set(r.key, r.alarm);
     }
@@ -327,7 +382,57 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
     const head = heads.find(h => h.key === key);
     status.textContent = t('faultSimulated', { sensor: headName(head) }, 'Fehler simuliert: {sensor}.');
   });
-  const timer = setInterval(() => { if (!content.hidden) update(); }, 200);
+  const timer = setInterval(() => { if (!content.hidden) { pollLive(); update(); } }, 200);
+
+  // ---- live sensor --------------------------------------------------------------------------------
+  // When the measuring server has a verified, live sensor, it drives one module of the plan: the ILD1900 is
+  // "Qualitätskontrolle · Messkopf A", the thermoMETER "Mechanische Bearbeitung". Its alarm is the server's: the AI
+  // flags something (or recognises a taught anomaly) or there is no valid reading.
+  const liveHead = { ild1900: 'Qualitätskontrolle|A', thermo_uc: 'Mechanische Bearbeitung|' };
+  const reasonKeys = { mean: 'reasonMean', std: 'reasonStd', p2p: 'reasonP2p', slope: 'reasonSlope', jitter: 'reasonJitter',
+    err_frac: 'reasonErrFrac', intensity: 'reasonIntensity', no_match: 'reasonNoMatch' };
+  const reasonSource = { reasonMean: 'Messwert verschoben', reasonStd: 'Rauschen erhöht', reasonP2p: 'Schwankung erhöht',
+    reasonSlope: 'Ungewöhnlicher Verlauf', reasonJitter: 'Unruhiges Signal', reasonErrFrac: 'Ungültige Messwerte',
+    reasonIntensity: 'Signalstärke verändert', reasonNoMatch: 'Passt zu keinen bekannten Daten', reasonOther: 'Auffälligkeit' };
+  const simulationNote = find('[data-factory-text="simulatedValues"], [data-factory-text="simulatedWithLive"]');
+  let liveSeen = 0, polling = false, lastPoll = -Infinity;
+  async function pollLive() {
+    const now = clock();
+    if (disposed || polling || typeof fetch !== 'function' || now - lastPoll < 0.4) return;
+    polling = true; lastPoll = now;
+    try {
+      const response = await fetch(new URL('/api/latest', import.meta.url), { cache: 'no-store' });
+      const frame = response.ok ? await response.json() : null;
+      if (disposed) return;
+      const device = frame?.device;
+      const key = frame?.status === 'streaming' && device?.live && device.verified ? liveHead[device.family] ?? null : null;
+      if (liveKey && liveKey !== key) sim.setLive(liveKey, null);
+      if (key) {
+        const ml = frame.ml || {};
+        const known = ml.known?.label_note;
+        const invalid = frame.current_valid === false;
+        const alarm = invalid || ml.state === 'alert';
+        const reasonKey = reasonKeys[ml.reason] ?? 'reasonOther';
+        const reason = invalid ? (frame.last_error?.text || t('noValidValue', {}, 'Kein gültiger Messwert'))
+          : alarm ? t('aiAlarm', {}, 'KI-Alarm') + ' · ' + (known ? t('knownAnomaly', {}, 'Bekannte Anomalie') + ' · ' + known : t(reasonKey, {}, reasonSource[reasonKey]))
+          : ml.state === 'learning' ? t('aiLearning', {}, 'KI lernt') : t('aiWatching', {}, 'KI überwacht');
+        const value = device.unit === '°C' ? frame.raw_value : frame.dist_from_face_mm;
+        sim.setLive(key, { value: Number.isFinite(value) && !invalid ? value : null, alarm, reason });
+        liveSeen = now;
+      }
+      if (key !== liveKey && simulationNote) {
+        simulationNote.dataset.factoryText = key ? 'simulatedWithLive' : 'simulatedValues';
+        simulationNote.dataset.factorySource = key ? 'Simulierte Modulwerte · das LIVE-Modul zeigt den angeschlossenen Sensor'
+          : 'Simulierte Modulwerte · keine Live-Sensordaten';
+        simulationNote.textContent = t(simulationNote.dataset.factoryText, {}, simulationNote.dataset.factorySource);
+      }
+      liveKey = key;
+    } catch {
+      if (liveKey && clock() - liveSeen > 3) { sim.setLive(liveKey, null); liveKey = null; }
+    } finally {
+      polling = false;
+    }
+  }
 
   // ---- open / close ----------------------------------------------------------------------------
   toggle.addEventListener('click', () => {
@@ -336,8 +441,8 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
     toggle.setAttribute('aria-expanded', String(open));
     toggle.firstElementChild.textContent = t(open ? 'hidePlan' : 'showPlan', {}, open ? 'Gebäudeplan ausblenden' : 'Gebäudeplan anzeigen');
     if (open) {
-      if (!floor.getAttribute('src')) floor.src = new URL('./grundriss.svg', import.meta.url);
-      setMode(mode);
+      showFloor();
+      setMode(mode, null, false);            // opening the plan does not take the keyboard focus
     }
   });
   function localize() {
@@ -357,7 +462,8 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
       module.box.querySelector('.factory-module-place').textContent = t(module.station.positionKey, {}, module.station.position);
     }
     for (const tile of tilesByKey.values()) {
-      tile.button.setAttribute('aria-label', t('simulatedSensor', { sensor: headName(tile.head) }, '{sensor} · simulierte Werte'));
+      tile.button.setAttribute('aria-label', tile.head.key === liveKey ? t('liveSensor', { sensor: headName(tile.head) }, '{sensor} · Live-Werte des angeschlossenen Sensors')
+        : t('simulatedSensor', { sensor: headName(tile.head) }, '{sensor} · simulierte Werte'));
       tile.button.querySelector('.factory-tile-name').textContent = tile.head.suffix ? t('headLabel', { model: tile.head.station.model, head: tile.head.suffix }, '{model} · Messkopf {head}') : tile.head.station.model;
       tile.button.querySelector('.factory-tile-quantity').textContent = quantity(tile.head.station);
     }
@@ -367,7 +473,7 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (mode === 'map') renderMap(); }) : null;
   observer?.observe(viewport);
   localize();
-  if (expanded) { floor.src = new URL('./grundriss.svg', import.meta.url); setMode('map', null, false); }
+  if (expanded) { showFloor(); setMode('map', null, false); }
   const clearSelection = () => { for (const item of selectable) item.setAttribute('aria-pressed', 'false'); };
   clearSelection.refresh = (options = {}) => {
     if (disposed) return;
@@ -376,7 +482,8 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, expanded = f
   };
   clearSelection.destroy = () => {
     if (disposed) return;
-    disposed = true; clearInterval(timer); observer?.disconnect(); section.remove();
+    disposed = true; clearInterval(timer); observer?.disconnect(); themeObserver?.disconnect(); section.remove();
+    if (floorUrl) URL.revokeObjectURL(floorUrl);
   };
   return clearSelection;
 }

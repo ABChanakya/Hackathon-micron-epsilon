@@ -14,7 +14,8 @@ function sharedStyles(url) {
   return stylesheets.get(url);
 }
 
-export function createDesktopFactoryPlan(host, {language = 'de', baseUrl, onSelect = () => {}} = {}) {
+// onAlarm({ key, active, text }) for simulated module alarms; onLive() when the module a real sensor drives is chosen.
+export function createDesktopFactoryPlan(host, {language = 'de', baseUrl, onSelect = () => {}, onAlarm = () => {}, onLive = () => {}} = {}) {
   let disposed = false, plan = null, selected = null, failed = false;
   const t = (key, values) => factoryText(key, values, language);
   let origin;
@@ -59,8 +60,10 @@ export function createDesktopFactoryPlan(host, {language = 'de', baseUrl, onSele
     if (disposed || !host.isConnected) return false;
     container.replaceChildren();
     plan = module.mountFactoryPlan(container, {expanded: true, controlsId: selectionId, language, text: t,
+      onAlarm(alarm) { if (!disposed) onAlarm(alarm); },
       selectSensor(sensor) {
         if (disposed) return;
+        if (sensor.live) { selected = null; showSelection(); onLive({...sensor}); return; }
         selected = {...sensor, source: 'demo', simulated: true}; showSelection(); onSelect({...selected});
       }});
     return true;

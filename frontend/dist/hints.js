@@ -87,11 +87,21 @@ function place(target) {
   t.style.top = `${Math.round(top)}px`;
 }
 
+// The monitor redraws often (live values). A redraw replaces the element a hint belongs to; find its successor
+// (same hint text, same kind of element) so the hint stays open instead of failing or vanishing.
+function successor(old) {
+  if (old.isConnected) return old;
+  const root = document.getElementById('app');
+  return [...(root?.querySelectorAll('[data-hint]') ?? [])]
+    .find(el => el.dataset.hint === old.dataset.hint && el.tagName === old.tagName && el.className === old.className) ?? null;
+}
+
 function show(target, delay) {
   clearTimeout(showTimer);
   clearTimeout(hideTimer);
   showTimer = setTimeout(() => {
-    if (!target.isConnected) return;
+    target = successor(target);
+    if (!target) return;
     const text = translateText(target.dataset.hint || '');
     if (!text) return;
     hide();
@@ -133,7 +143,14 @@ export function installHints(root = document.getElementById('app')) {
   if (!root || root.dataset.hints) return;
   root.dataset.hints = '1';
   let queued = false;
-  const run = () => { queued = false; attach(root); };
+  const run = () => {
+    queued = false;
+    attach(root);
+    if (current && !current.isConnected && tip && !tip.hidden) {     // keep an open hint on the redrawn element
+      const next = successor(current);
+      if (next) { current = next; next.setAttribute('aria-describedby', 'hint-tip'); place(next); } else hide();
+    }
+  };
   new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(run); } })
     .observe(root, {childList: true, subtree: true});
   attach(root);
@@ -157,7 +174,7 @@ export function installHints(root = document.getElementById('app')) {
   document.addEventListener('click', event => {
     const target = hinted(event);
     if (target?.classList.contains('tip-btn')) {
-      if (current === target) hide(); else show(target, 0);   // touch and mouse: tap the "i" to open or close
+      if (current && successor(current) === target && tip && !tip.hidden) hide(); else show(target, 0);   // tap the "i" to open or close
     } else if (!event.target.closest?.('#hint-tip')) hide();
   });
   document.addEventListener('keydown', event => {

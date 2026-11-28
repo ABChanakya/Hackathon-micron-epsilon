@@ -28,7 +28,7 @@ Die Sprachwahl gilt für Cockpit, Aufzeichnungen, Einrichtung, Dialoge und Haupt
 
 ## Gebäudeplan und Hinweise
 
-Unterhalb der Messkarten zeigt das Desktop-Cockpit denselben fiktiven Gebäudeplan wie die Handy-Ansicht. Der Button **Gebäudeplan** in der Titelzeile springt dorthin. Karte und Modulansicht lassen sich umschalten; die Sensorauswahl erscheint innerhalb der Seite. Die Modulwerte und Alarme sind ausdrücklich Simulationen und ändern die laufende Sensorverbindung nicht.
+Unterhalb der Messkarten zeigt das Desktop-Cockpit denselben fiktiven Gebäudeplan wie die Handy-Ansicht. Der Button **Gebäudeplan** in der Titelzeile springt dorthin. Karte und Modulansicht lassen sich umschalten; die Sensorauswahl erscheint innerhalb der Seite. Das mit LIVE gekennzeichnete Modul zeigt die Messung und Alarme des angeschlossenen Sensors. Die übrigen Module verwenden simulierte Werte.
 
 Automatische Hinweise stehen unterhalb der Karten im eingeklappten Bereich **Aktuelle Hinweise**. Erfolgsmeldungen erscheinen dort als kompakte Statuszeile. Dadurch verschieben Meldungen die oberen Mess- und 3D-Karten nicht. Gebäudeplan und Bedienelemente folgen der globalen Sprache und dem gewählten Farbschema.
 
