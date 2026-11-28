@@ -1,4 +1,4 @@
-import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=ui-review-3';
+import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=desktop-plan-1';
 import {cockpitUrl} from './navigation.mjs';
 import { chartData, describeError } from './recordings.mjs';
 import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs?v=fixed-sections';

@@ -26,6 +26,12 @@ Das Zahnrad oben rechts öffnet Datenquelle, Sprache, Farbschema, Messprofil und
 
 Die Sprachwahl gilt für Cockpit, Aufzeichnungen, Einrichtung, Dialoge und Hauptseite. Unterstützt werden Deutsch, Englisch, Französisch, Spanisch, Italienisch, Tschechisch, Chinesisch, Japanisch, Koreanisch und Pirate. Die Auswahl wird in diesem Browser gespeichert und mit der Hauptseite geteilt. Eigene Profilnamen, Aufnahmen und Notizen bleiben unverändert.
 
+## Gebäudeplan und Hinweise
+
+Unterhalb der Messkarten zeigt das Desktop-Cockpit denselben fiktiven Gebäudeplan wie die Handy-Ansicht. Der Button **Gebäudeplan** in der Titelzeile springt dorthin. Karte und Modulansicht lassen sich umschalten; die Sensorauswahl erscheint innerhalb der Seite. Die Modulwerte und Alarme sind ausdrücklich Simulationen und ändern die laufende Sensorverbindung nicht.
+
+Automatische Hinweise stehen unterhalb der Karten im eingeklappten Bereich **Aktuelle Hinweise**. Erfolgsmeldungen erscheinen dort als kompakte Statuszeile. Dadurch verschieben Meldungen die oberen Mess- und 3D-Karten nicht. Gebäudeplan und Bedienelemente folgen der globalen Sprache und dem gewählten Farbschema.
+
 ### Messbrücke
 
 Unter **Einstellungen** gibst du die WebSocket-Adresse der Messbrücke ein, beispielsweise `ws://localhost:8765`. Bei einer per HTTPS geöffneten Seite kann WSS nötig sein.

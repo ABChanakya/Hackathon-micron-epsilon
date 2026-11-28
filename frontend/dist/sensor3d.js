@@ -95,7 +95,7 @@ export function fitCameraDistance(corners, aspect, verticalFov = 35) {
  * Interactive schematic based on pages 31 and 33 of the optoNCDT 1900 manual. This is intentionally not a
  * manufacturer CAD model. Hardware LED meaning is independent of tolerance.
  */
-export function createSensorViewer(container, { onSelect, initialState = {} } = {}) {
+export function createSensorViewer(container, { onSelect, onActivate, initialState = {} } = {}) {
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
@@ -114,8 +114,9 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   const canvas = renderer.domElement;
   canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;outline-offset:-4px';
   canvas.tabIndex = 0;
-  canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', 'Schematisches 3D-Modell des optoNCDT 1900-10. Zum Drehen ziehen oder Pfeiltasten verwenden. Plus und Minus zum Zoomen, Pos1 für die Ausgangsansicht.');
+  canvas.setAttribute('role', onActivate ? 'button' : 'img');
+  if (onActivate) canvas.setAttribute('aria-haspopup', 'dialog');
+  canvas.setAttribute('aria-label', 'Schematisches 3D-Modell des optoNCDT 1900-10. Zum Drehen ziehen oder Pfeiltasten verwenden. Plus und Minus zum Zoomen, Pos1 für die Ausgangsansicht.' + (onActivate ? ' Klicken, Enter oder Leertaste öffnet das Video.' : ''));
   container.append(canvas);
 
   const scene = new THREE.Scene();
@@ -472,17 +473,22 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
   const pointer = new THREE.Vector2();
   let pointerDown = null;
   const onPointerDown = event => { pointerDown = { x: event.clientX, y: event.clientY }; };
-  const onPointerUp = event => {
-    if (!pointerDown || Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 5) return;
+  const onClick = event => {
+    const start = pointerDown;
     pointerDown = null;
+    if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
     const rect = canvas.getBoundingClientRect();
     pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObject(sensor, true)[0];
     if (hit?.object.userData.ledName) onSelect?.(hit.object.userData.ledName);
+    else if (hit) onActivate?.();
   };
   const onKeyDown = event => {
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+    if (onActivate && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      onActivate();
+    } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
       event.preventDefault();
       const offset = camera.position.clone().sub(controls.target);
       const spherical = new THREE.Spherical().setFromVector3(offset);
@@ -506,7 +512,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
     }
   };
   canvas.addEventListener('pointerdown', onPointerDown);
-  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('click', onClick);
   canvas.addEventListener('keydown', onKeyDown);
   resize();
   setStatus(initialState);
@@ -521,7 +527,7 @@ export function createSensorViewer(container, { onSelect, initialState = {} } = 
       controls.removeEventListener('change', render);
       controls.dispose();
       canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('keydown', onKeyDown);
       const geometries = new Set();
       const materials = new Set();

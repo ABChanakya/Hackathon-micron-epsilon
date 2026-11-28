@@ -43,7 +43,7 @@ class PhoneServerTests(unittest.TestCase):
         self.assertEqual(json.loads(payload), {"backendPort": 8765})
 
     def test_shared_language_aliases_ignore_cache_query_and_serve_exact_files(self):
-        for path in ["/i18n.js", "/locales/en.js", "/locales/mobile-copy.js", "/locales/coverage-copy.js", "/locales/recordings-copy.js"]:
+        for path in ["/i18n.js", "/factory-copy.js", "/locales/en.js", "/locales/mobile-copy.js", "/locales/coverage-copy.js", "/locales/recordings-copy.js"]:
             status, kind, payload = self.request(path + "?v=ui-review-1")
             self.assertEqual(status, 200, path)
             self.assertIn("javascript", kind)
