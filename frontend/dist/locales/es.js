@@ -1,5 +1,13 @@
 // Monitor translations. Preserve source keys and named placeholders.
 export default {
+  "Slope": "Pendiente",
+  "Trend über 1 s": "Tendencia durante 1 s",
+  "Aktueller Slope": "Pendiente actual",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "Gráfico de pendiente: cambio por segundo a lo largo del tiempo",
+  "Warte auf Messwerte": "Esperando mediciones",
+  "Noch nicht genügend Messwerte": "Aún no hay suficientes mediciones",
+  "Keine gültigen Messwerte": "No hay mediciones válidas",
+  "Messreihe unterbrochen": "Serie de mediciones interrumpida",
   "Farbschema": "Aspecto",
   "Zur Hauptseite": "Volver al inicio",
   "Hauptseite": "Inicio",

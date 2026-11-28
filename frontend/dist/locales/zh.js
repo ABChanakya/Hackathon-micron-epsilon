@@ -1,4 +1,12 @@
 export default {
+  "Slope": "变化率",
+  "Trend über 1 s": "1 秒趋势",
+  "Aktueller Slope": "当前变化率",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "变化率图：每秒变化量随时间的变化",
+  "Warte auf Messwerte": "等待测量数据",
+  "Noch nicht genügend Messwerte": "测量数据尚不足",
+  "Keine gültigen Messwerte": "无有效测量数据",
+  "Messreihe unterbrochen": "测量序列已中断",
   "Farbschema": "外观",
   "Zur Hauptseite": "返回主页",
   "Hauptseite": "主页",

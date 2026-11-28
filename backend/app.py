@@ -16,6 +16,7 @@ from pydantic import BaseModel
 import anomaly
 import hub as hubmod
 from sources import probe_port, serial_ports
+from assistant_api import create_assistant_router
 
 app = FastAPI(title="Micro-Epsilon sensor backend")
 # The monitor website and the landing page run on their own local ports and read /api/status, so allow
@@ -327,6 +328,8 @@ async def bridge(ws: WebSocket):
     except WebSocketDisconnect:
         hub.bridge_clients.discard(ws)
 
+
+app.include_router(create_assistant_router())
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 FRONTEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")

@@ -1,4 +1,12 @@
 export default {
+  "Slope": "Slope",
+  "Trend über 1 s": "Trend over 1 s",
+  "Aktueller Slope": "Current slope",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "Slope chart: change per second over time",
+  "Warte auf Messwerte": "Awaitin’ readings",
+  "Noch nicht genügend Messwerte": "Not enough readings yet",
+  "Keine gültigen Messwerte": "No valid readings",
+  "Messreihe unterbrochen": "Measurement series interrupted",
   "Farbschema": "Colour scheme",
   "Zur Hauptseite": "Back to port",
   "Hauptseite": "Home port",

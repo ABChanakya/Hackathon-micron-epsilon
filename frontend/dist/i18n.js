@@ -1,4 +1,9 @@
-import english from './locales/en.js';
+import english from './locales/en.js?v=ui-review-3';
+import cockpitCopy from './locales/cockpit-copy.js?v=ui-review-3';
+import settingsCopy from './locales/settings-copy.js?v=ui-review-3';
+import mobileCopy from './locales/mobile-copy.js?v=ui-review-3';
+import coverageCopy from './locales/coverage-copy.js?v=ui-review-3';
+import recordingsCopy from './locales/recordings-copy.js?v=recordings-1';
 
 // Shared with the presentation page, so following either link retains the chosen language.
 const STORAGE_KEY = 'landing-lang';
@@ -17,12 +22,18 @@ export const LANGUAGES = Object.freeze([
 const supported = code => LANGUAGES.some(language => language.code === code);
 const storedLanguage = () => {
   try {
+    const selected = new URLSearchParams(globalThis.location?.search || '').get('lang');
+    if (supported(selected)) {
+      globalThis.localStorage?.setItem(STORAGE_KEY, selected);
+      return selected;
+    }
     const code = globalThis.localStorage?.getItem(STORAGE_KEY);
     return supported(code) ? code : 'de';
   } catch { return 'de'; }
 };
 let language = storedLanguage();
-const dictionaries = new Map([['en', english]]);
+export const revisionMessages = code => ({...cockpitCopy[code], ...settingsCopy[code], ...mobileCopy[code], ...coverageCopy[code], ...recordingsCopy[code]});
+const dictionaries = new Map([['en', {...english, ...revisionMessages('en')}]]);
 const loading = new Map();
 const compiled = new Map();
 const textSources = new WeakMap();
@@ -41,8 +52,8 @@ export const getLocale = (code = language) => LANGUAGES.find(item => item.code =
 async function loadLanguage(code) {
   if (code === 'de' || dictionaries.has(code)) return;
   if (!loading.has(code)) {
-    loading.set(code, import(`./locales/${code}.js`).then(module => {
-      dictionaries.set(code, module.default);
+    loading.set(code, import(`./locales/${code}.js?v=ui-review-3`).then(module => {
+      dictionaries.set(code, {...module.default, ...revisionMessages(code)});
       compiled.delete(code);
     }).catch(() => {
       // Existing labels remain usable if an optional locale cannot be fetched.
@@ -56,7 +67,7 @@ function phrases(code) {
   const dictionary = dictionaries.get(code) || english;
   const cached = compiled.get(code);
   if (cached?.dictionary === dictionary) return cached;
-  const messages = { ...english, ...dictionary };
+  const messages = { ...english, ...revisionMessages('en'), ...dictionary };
   const templates = Object.keys(messages).filter(key => key.includes('{')).map(key => {
     const names = [], parts = [];
     let cursor = 0;
@@ -68,11 +79,7 @@ function phrases(code) {
     parts.push(escapePattern(key.slice(cursor)));
     return { key, names, pattern: new RegExp(`^${parts.join('')}$`, 'u') };
   }).sort((a, b) => b.key.replace(/\{\w+\}/g, '').length - a.key.replace(/\{\w+\}/g, '').length);
-  // Identity phrases still consume a match: a brand such as "Sensor Cockpit"
-  // must not have its shorter "Sensor" term translated inside a longer page title.
-  const terms = Object.keys(messages).filter(key => !key.includes('{')).sort((a, b) => b.length - a.length);
-  const termPattern = terms.length ? new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.map(escapePattern).join('|')})(?![\\p{L}\\p{N}_])`, 'gu') : null;
-  const result = { dictionary, messages, templates, termPattern };
+  const result = { dictionary, messages, templates };
   compiled.set(code, result);
   return result;
 }
@@ -83,7 +90,7 @@ export function translateText(value, code = language, depth = 0) {
   if (code === 'de' || !supported(code) || !text.trim() || depth > 3) return text;
   const leading = text.match(/^\s*/)[0], trailing = text.match(/\s*$/)[0], source = text.trim();
   if (!/[A-Za-zÄÖÜäöüß]/.test(source)) return text;
-  const { messages, templates, termPattern } = phrases(code);
+  const { messages, templates } = phrases(code);
   let translated = Object.hasOwn(messages, source) ? messages[source] : null;
   if (translated === null) {
     for (const template of templates) {
@@ -92,12 +99,12 @@ export function translateText(value, code = language, depth = 0) {
       const values = Object.fromEntries(template.names.map((name, index) => [name, match[index + 1]]));
       translated = messages[template.key].replace(/\{(\w+)\}/g, (_, name) => {
         const captured = values[name] ?? '';
-        return ['status', 'color', 'reason'].includes(name) ? translateText(captured, code, depth + 1) : captured;
+        return ['status', 'color', 'reason', 'page', 'quantity'].includes(name) ? translateText(captured, code, depth + 1) : captured;
       });
       break;
     }
   }
-  if (translated === null) translated = termPattern ? source.replace(termPattern, term => messages[term]) : source;
+  if (translated === null) translated = source;
   return leading + translated + trailing;
 }
 
@@ -157,6 +164,14 @@ export async function setLanguage(code) {
   if (!supported(code)) return false;
   language = code;
   try { globalThis.localStorage?.setItem(STORAGE_KEY, code); } catch {}
+  // A language handed over by another origin must not override a later choice on reload.
+  try {
+    const url = new URL(globalThis.location.href);
+    if (url.searchParams.has('lang')) {
+      url.searchParams.set('lang', code);
+      globalThis.history?.replaceState(globalThis.history.state, '', url);
+    }
+  } catch {}
   applyTranslations();
   await loadLanguage(code);
   if (language === code) applyTranslations();

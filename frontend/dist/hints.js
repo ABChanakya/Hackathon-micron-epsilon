@@ -2,10 +2,10 @@
 // Hint texts are German source strings (translated at show time by i18n.js); they are attached after every render
 // by selector, so the page templates in app.js stay readable. Hints work with the mouse (hover), the keyboard (focus,
 // Esc closes) and touch (tap an "i" button), and the tooltip can be hovered without disappearing (WCAG 1.4.13).
-import {translateText} from './i18n.js?v=cockpit-1';
+import {translateText} from './i18n.js?v=ui-review-3';
 
 const recording = el => /Stoppen/.test(el.textContent);
-const isMl = el => /In Ordnung/.test(el.textContent);
+const isMl = el => el?.dataset?.feedbackKind === 'ml' || /In Ordnung/.test(el.textContent);
 const accepted = el => el.dataset.accepted === 'true';
 
 // [selector, hint(el) | text, options]. options.info: also add an "i" button after the element (selectors are structural, because the text is translated).
@@ -31,12 +31,12 @@ export const HINTS = [
   ['[data-action="sensor"].text-button', 'Öffnet die große 3D-Ansicht mit dem Sensorstatus.'],
   ['[data-action="connect-sensor"]', 'Verbindet den gewählten Sensor. Schließe vorher sensorTOOL und andere Programme.'],
   ['[data-action="scan-sensors"]', 'Sucht erneut nach angeschlossenen Sensoren.'],
-  ['[data-action="ml-reset"]', 'Vergisst den gelernten Normalzustand und lernt neu. Deine Bewertungen bleiben.'],
-  ['[data-action="ml-forget"]', 'Löscht Normalzustand und alle Bewertungen.'],
+  ['[data-action="ml-reset"]', 'Lernt den Normalzustand neu. Gelernte Beispiele und Ereignisverlauf bleiben erhalten.'],
+  ['[data-action="ml-forget"]', 'Setzt Normalzustand und gelernte Beispiele zurück. Ereignisverlauf und Fehlerdatei bleiben erhalten.'],
   ['[data-action="ml-learn"]', el => el.dataset.label === 'anomaly' ? 'Lernt die gewählte Aufnahme als Anomalie.' : 'Lernt die gewählte Aufnahme als Normalzustand.'],
-  ['.learning-card .panel-heading h2, .advanced-panel:has([data-action="toggle-learning"]) .panel-heading h2', 'Sollgrenzen sind deine Vorgabe. Auswertungsgrenzen können wachsen, wenn du Abweichungen als akzeptabel bewertest.', {info: true}],
-  ['.ml-panel .panel-heading h2', 'Lernt, wie dein Signal normal aussieht, und meldet Abweichungen. Fehler werden verworfen und in eine Datei geschrieben.', {info: true}],
-  ['.chart-head h2', 'Verlauf der Messwerte. Fahre mit der Maus über das Diagramm, um den Wert zu jedem Zeitpunkt zu sehen.', {info: true}],
+  ['.learning-card .panel-heading h2, .advanced-panel:has([data-action="toggle-learning"]) .panel-heading h2', 'Sollgrenzen sind deine Vorgabe. Auswertungsgrenzen können wachsen, wenn du Abweichungen als akzeptabel bewertest.', {info: true, label: 'Hilfe zu Auswertungsgrenzen'}],
+  ['.ml-panel .panel-heading h2', 'Lernt, wie dein Signal normal aussieht, und meldet Abweichungen. Fehler werden verworfen und in eine Datei geschrieben.', {info: true, label: 'Hilfe zur Anomalieerkennung'}],
+  ['.chart-head h2', 'Verlauf der Messwerte. Fahre mit der Maus über das Diagramm, um den Wert zu jedem Zeitpunkt zu sehen.', {info: true, label: 'Hilfe zum Messverlauf'}],
 ];
 
 function attach(root) {
@@ -49,7 +49,8 @@ function attach(root) {
         button.type = 'button';
         button.className = 'tip-btn';
         button.textContent = 'i';
-        button.setAttribute('aria-label', 'Mehr Informationen');
+        button.setAttribute('aria-label', translateText(options.label || 'Mehr Informationen'));
+        button.dataset.i18nSkip = '';
         button.dataset.hint = text;
         el.after(button);
       } else if (el.dataset.hint !== text) {

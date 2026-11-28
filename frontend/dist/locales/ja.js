@@ -1,4 +1,12 @@
 export default {
+  "Slope": "変化率",
+  "Trend über 1 s": "1秒間の傾向",
+  "Aktueller Slope": "現在の変化率",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "変化率グラフ：時間に対する1秒あたりの変化",
+  "Warte auf Messwerte": "測定値を待機中",
+  "Noch nicht genügend Messwerte": "測定値がまだ不足しています",
+  "Keine gültigen Messwerte": "有効な測定値がありません",
+  "Messreihe unterbrochen": "測定系列が中断されました",
   "Farbschema": "外観",
   "Zur Hauptseite": "ホームに戻る",
   "Hauptseite": "ホーム",

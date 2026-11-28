@@ -67,6 +67,31 @@ Aufnahmen lassen sich auch unter Einstellungen mit „Als normal lernen“ / „
 Alle Parameter (Meldeschwelle, Zeitfenster, Lernphase, Grenzen, Fehlerdatei …) stehen unter **Einstellungen →
 KI-Anomalieerkennung**. Das Gelernte bleibt pro Sensor in `backend/ml/` gespeichert. Details: [API](backend/API.md#anomaly-agent-anomalypy).
 
+## Lokaler Sprachassistent
+
+Der Assistent beantwortet Fragen zur App und erklärt die ausdrücklich übergebenen Fehler und Diagrammdaten über
+Ollama mit `qwen3:4b-instruct`. Ein Cloud-Key ist nicht erforderlich. Parameterbefehle erzeugen ausschließlich
+simulierte Vorschläge; sie ändern weder Sensor noch Messprofil oder ML-Einstellungen.
+
+Ollama muss bereits installiert sein. Einmal mit Internetzugang das Modell einrichten, danach lokal starten:
+
+```sh
+./scripts/start-assistant.sh setup
+./scripts/start-assistant.sh start
+export ASSISTANT_OLLAMA_URL=http://127.0.0.1:11434
+export ASSISTANT_MODEL=qwen3:4b-instruct
+./start.sh
+```
+
+Nur `setup` lädt das Modell herunter. `start` verwendet ein vorhandenes Modell und einen erreichbaren Dienst weiter
+oder startet einen lokalen Ollama-Prozess. `status` prüft beides ohne Start oder Download. Der normale
+Messserverstart bleibt unverändert. Unter macOS wird auch die CLI in einer vorhandenen `Ollama.app` gefunden.
+Ein bereits laufender Dienst behält seine Cloud-Konfiguration; neu gestartetes Ollama erhält `OLLAMA_NO_CLOUD=1`.
+
+Das Assistentenwissen stammt aus der App und ihrem Sensorkontext. Herstellerhandbücher und ein Handbuch-RAG-Index
+sind in diesem Checkout nicht enthalten. Einrichtung, Offlineprobe, vollständiger Modelldigest und Benchmarkverfahren:
+[Lokaler Sensor-Assistent](backend/ASSISTANT.md).
+
 ## Aufbau
 
 ```mermaid
@@ -78,7 +103,8 @@ flowchart LR
   B -- CSV + JSON --> R[(backend/recordings)]
   B -- Fehler als JSONL --> E[(backend/ml/errors.jsonl)]
   R -- Wiedergabe --> B
-  D[(727 Handbücher + MEDAQLib)] --> Q[rag/ Suche]
+  M -- /api/assistant --> B
+  B -- lokale Inferenz --> A[Ollama · qwen3:4b-instruct<br/>127.0.0.1:11434]
 ```
 
 | Ordner | Inhalt |
@@ -87,8 +113,7 @@ flowchart LR
 | `frontend/` | Monitor (Messplatz, `dist/`) und Handy-Ansicht (`Handy frontend/`) ([Frontend](frontend/README.md)) |
 | `scrollcraft/builds/landing/` | Präsentationsseite für den Pitch, zehn Sprachen ([README](scrollcraft/builds/landing/README.md)) |
 | `backend/recordings/` | Beispielaufnahmen des ILD1900 (sechs Materialien) zum Abspielen ohne Hardware |
-| `rag/` | Volltextsuche über die Handbücher, z. B. `python3 -I rag/query.py "MEASRATE" -f 1900` |
-| `productinformation/`, `software/` | Infopaket des Hackathons: Handbücher, Datenblätter, MEDAQLib, sensorTOOL |
+| `scripts/start-assistant.sh` | Lokaler Ollama-Dienst: expliziter Modelldownload, Start und Statusprüfung ([Anleitung](backend/ASSISTANT.md)) |
 
 Gut zu wissen:
 - Solange ein optoNCDT verbunden ist, ist sein analoger 4-20-mA-Ausgang aus (die Daten laufen über RS422).

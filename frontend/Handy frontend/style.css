@@ -147,6 +147,9 @@ button.primary:hover:not([aria-disabled="true"]) { filter: brightness(.92); }
 }
 
 .skip-link:focus { transform: none; }
+.compact-monitor { display: none; }
+.action-link { display: inline-flex; min-height: 44px; align-items: center; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: var(--radius); color: var(--accent); text-decoration: none; font-weight: 600; }
+.connection-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
 .site-header { background: var(--surface); border-bottom: 1px solid var(--border); }
 
 .header-inner, .monitor { width: min(100%, 62rem); margin-inline: auto; padding-inline: .9rem; }
@@ -161,7 +164,7 @@ button.primary:hover:not([aria-disabled="true"]) { filter: brightness(.92); }
 }
 
 .brand, .header-actions { display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; }
-.brand { gap: .6rem; }
+.brand { gap: .6rem; min-width: 0; color: inherit; text-decoration: none; }
 .brand strong, .brand small { display: block; line-height: 1.2; }
 .brand small { color: var(--muted); margin-top: .17rem; font-size: .78rem; }
 .icon-button {
@@ -219,7 +222,7 @@ button.primary:hover:not([aria-disabled="true"]) { filter: brightness(.92); }
 .detail-header { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: .4rem .9rem; }
 .detail-meta { margin-top: .22rem; color: var(--muted); font-size: .875rem; }
 #chart, #live-chart { margin-block: .75rem; }
-.chart-unit, .y-labels, .x-labels { color: var(--muted); font: .76rem/1.2 var(--mono); }
+.chart-unit, .y-labels, .x-labels { color: var(--muted); font: .875rem/1.35 var(--mono); }
 .chart-unit { margin-bottom: .45rem; }
 
 .chart-frame {
@@ -311,6 +314,8 @@ dialog button { justify-self: start; }
 #demo-reading, #live-reading { font: 600 2.75rem/1.2 var(--mono); letter-spacing: -.055em; }
 #demo-unit, #live-unit { font-size: 1rem; }
 #live-notice { margin-bottom: .6rem; }
+#live-chart[data-historical="true"] .plot { opacity: .7; }
+#live-history { margin-top: .4rem; }
 
 .dataset-picker {
   margin-bottom: .85rem;
@@ -326,56 +331,26 @@ dialog button { justify-self: start; }
 .legend-limit { width: .85rem; border-top: 1px dashed var(--chart-limit); }
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 1100px) {
-  body { background: var(--chart-bg); }
-
-  .skip-link,
-  .site-header,
-  .page-heading,
-  .source-tabs,
-  .dataset-picker,
-  .detail-header,
-  .live-reading,
-  #demo-pause,
-  #chart-title,
-  #demo-source,
-  #live-notice,
-  #live-chart-unit,
-  #chart figcaption,
-  #live-chart figcaption {
-    display: none;
-  }
-
-  .monitor {
-    width: 100%;
-    height: 100vh;
-    height: 100dvh;
-    padding: .5rem;
-  }
-
-  #recorded-view,
-  #recorded-view > .detail-panel,
-  #live-view,
-  #chart,
-  #live-chart,
-  .chart-frame {
-    height: 100%;
-    min-height: 0;
-  }
-
-  .detail-panel {
-    padding: 0;
-    border: 0;
-    background: none;
-  }
-
-  #chart, #live-chart { margin: 0; }
-  .chart-frame { grid-template-rows: minmax(0, 1fr) auto; }
-  .plot { height: 100%; }
-
-  /* Keep the live time axis visible while waiting for its first measurements. */
-  #live-chart[hidden] { display: block !important; }
-  #live-chart[hidden] canvas,
-  #live-chart[hidden] .y-labels {
-    visibility: hidden;
-  }
+  .header-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem 1rem; padding-block: .25rem; }
+  .brand small { display: none; }
+  .brand-logo { width: 1.6rem; height: 1.6rem; flex-basis: 1.6rem; }
+  .compact-monitor { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .75rem; font-size: .875rem; }
+  .compact-monitor > span:first-child { font-weight: 650; }
+  .monitor { padding-block: .5rem 1rem; }
+  .page-heading, .dataset-picker { display: none; }
+  .source-tabs { margin-bottom: .5rem; }
+  .source-tabs button { min-height: 44px; padding-block: .25rem; }
+  .detail-panel { padding: .55rem .8rem; }
+  #recorded-view > .detail-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .2rem .8rem; }
+  #recorded-view .detail-header { grid-column: 1; }
+  #recorded-view .live-reading { grid-column: 2; }
+  #demo-pause { grid-column: 3; }
+  #chart { grid-column: 1 / -1; }
+  #demo-reading, #live-reading { font-size: 2rem; }
+  .live-reading { padding-block: .2rem; }
+  .plot { height: max(150px, calc(100dvh - 260px)); }
+  #chart, #live-chart { margin-block: .35rem; }
+  #chart-title, #demo-source { display: none; }
+  #live-view .detail-header { align-items: center; }
+  #live-history { margin-top: .25rem; }
 }

@@ -1,4 +1,6 @@
-// Copy for the assistant preview. Keep keys and named placeholders aligned across languages.
+import revisionCopy from './assistant-copy.js?v=ui-review-3';
+import runtimeCopy from './assistant-runtime-copy.js?v=local-assistant-1';
+// Copy for the local assistant and parameter simulations. Keep named placeholders aligned.
 export const assistantMessages = {
   "de": {
     "title": "Assistent",
@@ -1131,6 +1133,9 @@ export const assistantMessages = {
     "emptyCommandHint": "For example: “Set the upper specification limit to {value} {unit}.”"
   }
 };
+
+for (const [language, messages] of Object.entries(revisionCopy)) Object.assign(assistantMessages[language], messages);
+for (const [language, messages] of Object.entries(runtimeCopy)) Object.assign(assistantMessages[language], messages);
 
 /** Interpolate only supplied values; user names, numbers and units remain untouched. */
 export function assistantText(key, values = {}, language = 'de') {

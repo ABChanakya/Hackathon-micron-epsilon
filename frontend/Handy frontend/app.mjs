@@ -1,3 +1,5 @@
+import {LANGUAGES, getLanguage, getLocale, setLanguage, startTranslations, translateText} from '/i18n.js?v=ui-review-3';
+import {cockpitUrl} from './navigation.mjs';
 import { chartData } from './recordings.mjs';
 import { DEMO_DATASETS, DEMO_RATE, demoWindow } from './demo.mjs';
 import { createLiveView } from './live-view.mjs';
@@ -8,7 +10,8 @@ const plot = byId('plot');
 const canvas = byId('trace');
 const axisLabels = [...byId('y-labels').children];
 const picker = byId('dataset');
-const number = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const number = {format: value => new Intl.NumberFormat(getLocale(), {minimumFractionDigits: 3, maximumFractionDigits: 3}).format(value)};
+const tr = (text, values = {}) => translateText(text).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? '{' + key + '}');
 const clock = () => performance.now() / 1_000;
 const speechSupported = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 
@@ -16,6 +19,9 @@ let activeDataset = DEMO_DATASETS[0];
 let openedAt = clock();
 let pausedAt = null;
 let voiceEnabled = false;
+let activeLive = false;
+let backendPort = 8000;
+let liveStatus = {label: 'Verbinde mit dem Messserver …', state: 'loading'};
 
 function formatTime(seconds) {
   const whole = Math.floor(seconds);
@@ -26,7 +32,7 @@ function formatTime(seconds) {
 
 function speak(text) {
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'de-DE';
+  utterance.lang = getLocale();
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
 }
@@ -48,20 +54,21 @@ function drawChart() {
 }
 
 function showDataset() {
-  byId('source-summary').textContent = 'Demodaten · ' + activeDataset.model;
+  byId('source-summary').textContent = tr('Demodaten · {model}', {model: activeDataset.model});
   byId('demo-unit').textContent = activeDataset.unit;
-  byId('demo-source').textContent = DEMO_RATE + ' simulierte Messwerte pro Sekunde';
+  byId('demo-source').textContent = tr('{rate} simulierte Messwerte pro Sekunde', {rate: DEMO_RATE});
   updatePauseButton();
   drawChart();
 }
 
 function updatePauseButton() {
   const paused = pausedAt !== null;
-  byId('demo-pause-label').textContent = paused ? 'Fortsetzen' : 'Anzeige pausieren';
+  byId('demo-pause-label').textContent = tr(paused ? 'Fortsetzen' : 'Anzeige pausieren');
   byId('pause-icon').toggleAttribute('hidden', paused);
   byId('resume-icon').toggleAttribute('hidden', !paused);
-  byId('demo-state').textContent = paused ? 'Anzeige pausiert' : 'Demoanzeige';
+  byId('demo-state').textContent = tr(paused ? 'Demo · Anzeige pausiert' : 'Demoanzeige');
   byId('demo-state').dataset.state = paused ? 'paused' : 'valid';
+  updateCompactStatus();
 }
 
 for (const dataset of DEMO_DATASETS) picker.add(new Option(dataset.name, dataset.id));
@@ -168,9 +175,13 @@ function paintChart(canvas, plot, recording, scale, limits) {
 const liveView = createLiveView({
   paintChart,
   speakStatus: (message) => { if (voiceEnabled) speak(message); },
+  translate: tr, locale: getLocale,
+  onStatus: status => { liveStatus = status; updateCompactStatus(); },
 });
 
 function selectView(live) {
+  activeLive = live;
+  updateCompactStatus();
   byId('view-live').setAttribute('aria-pressed', String(live));
   byId('view-recorded').setAttribute('aria-pressed', String(!live));
   byId('recorded-view').hidden = live;
@@ -205,6 +216,7 @@ function updateDisplay() {
   root.toggleAttribute('data-color-safe', colorSafe);
   try {
     localStorage.setItem(preferenceKey, JSON.stringify({ fontSize, colorSafe, theme }));
+    localStorage.setItem('me-theme', theme);
   } catch {
     // Display preferences also work when storage is disabled.
   }
@@ -213,7 +225,9 @@ function updateDisplay() {
 }
 
 const preferences = readPreferences();
-byId('theme').value = preferences.theme === 'dark' ? 'dark' : 'light';
+let sharedTheme;
+try { sharedTheme = localStorage.getItem('me-theme'); } catch {}
+byId('theme').value = (sharedTheme === 'dark' || sharedTheme === 'light' ? sharedTheme : preferences.theme) === 'dark' ? 'dark' : 'light';
 byId('theme').addEventListener('change', updateDisplay);
 if (['standard', 'large', 'largest'].includes(preferences.fontSize)) {
   byId('font-size').value = preferences.fontSize;
@@ -229,7 +243,7 @@ byId('speech-unavailable').hidden = speechSupported;
 speech.addEventListener('change', () => {
   voiceEnabled = speechSupported && speech.checked;
   if (voiceEnabled) {
-    speak('Sprachausgabe aktiviert.');
+    speak(tr('Sprachausgabe aktiviert.'));
   } else if (speechSupported) {
     window.speechSynthesis.cancel();
   }
@@ -237,11 +251,56 @@ speech.addEventListener('change', () => {
 
 byId('open-settings').addEventListener('click', () => byId('settings-dialog').showModal());
 byId('open-help').addEventListener('click', () => byId('help-dialog').showModal());
+byId('connection-help').addEventListener('click', () => byId('help-dialog').showModal());
 
-const chartOnly = matchMedia('(orientation: landscape) and (max-height: 500px) and (max-width: 1100px)');
-chartOnly.addEventListener('change', ({ matches }) => {
-  if (matches) document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
+function updateCompactStatus() {
+  byId('compact-source').textContent = tr(activeLive ? 'Live-Daten' : 'Demodaten');
+  const status = activeLive ? liveStatus : {label: pausedAt !== null ? 'Anzeige pausiert' : 'Demoanzeige', state: pausedAt !== null ? 'paused' : 'valid'};
+  byId('compact-state').textContent = tr(status.label);
+  byId('compact-state').dataset.state = status.state;
+}
+
+function updateCockpitLinks() {
+  for (const id of ['cockpit-link', 'live-cockpit-link', 'help-cockpit-link'])
+    byId(id).href = cockpitUrl(location.href, backendPort, getLanguage(), id === 'cockpit-link' ? 'monitor' : 'advanced');
+}
+
+async function refreshLanguage() {
+  await setLanguage(getLanguage());
+  byId('language-select').value = getLanguage();
+  for (const [index, dataset] of DEMO_DATASETS.entries()) picker.options[index].textContent = tr(dataset.name);
+  showDataset();
+  liveView.refreshLanguage();
+  updateCompactStatus();
+  updateCockpitLinks();
+}
+for (const language of LANGUAGES) byId('language-select').add(new Option(language.name, language.code));
+byId('language-select').value = getLanguage();
+byId('language-select').addEventListener('change', async event => {
+  await setLanguage(event.target.value);
+  await refreshLanguage();
 });
+window.addEventListener('storage', async event => {
+  if (event.key === 'landing-lang') {
+    if (LANGUAGES.some(language => language.code === event.newValue)) await setLanguage(event.newValue);
+    await refreshLanguage();
+  } else if (event.key === 'me-theme' && ['light', 'dark'].includes(event.newValue)) {
+    byId('theme').value = event.newValue;
+    updateDisplay();
+  }
+});
+updateCockpitLinks();
+if (!/^\/handy(?:\/|$)/.test(location.pathname)) {
+  fetch('/monitor-config.json', {cache: 'no-store'}).then(response => response.ok ? response.json() : null).then(config => {
+    if (Number.isInteger(config?.backendPort) && config.backendPort >= 1 && config.backendPort <= 65535) {
+      backendPort = config.backendPort;
+      updateCockpitLinks();
+    }
+  }).catch(() => {});
+}
+await setLanguage(getLanguage());
+startTranslations();
+await refreshLanguage();
 
 new ResizeObserver(() => drawChart()).observe(plot);
 window.addEventListener('resize', () => drawChart());

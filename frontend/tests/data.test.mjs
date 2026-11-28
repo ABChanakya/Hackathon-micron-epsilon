@@ -4,8 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
-const source = await readFile(new URL('../dist/data.js', import.meta.url), 'utf8');
-const engine = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const engine = await import('../dist/data.js');
 
 test('demo profiles and readings match the selected sensor range', () => {
   const state = engine.createInitialState();
@@ -183,6 +182,8 @@ test('real PDF export uses selected-window learning state and application time',
   recording.parameterHistory = [{ ...result.event, t: 10, appliedT: 40 }];
   recording.zeroOffset = 25.0;
   let captured = [], pdfBytes;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => new Response(await readFile(url));
   globalThis.jspdf = { jsPDF: function (...args) {
     const doc = new JsPDF(...args);
     const originalText = doc.text.bind(doc);
@@ -191,30 +192,30 @@ test('real PDF export uses selected-window learning state and application time',
     return doc;
   } };
   try {
-    engine.exportReportPDF(recording, { start: 0, end: 20 });
-    assert.ok(captured.some(text => /Version 1/.test(text)));
-    assert.ok(!captured.some(text => /Version 2/.test(text)));
-    assert.ok(captured.some(text => text.includes('Keine Parameteränderungen')));
+    await engine.exportReportPDF(recording, { start: 0, end: 20 });
+    assert.ok(/Version 1/.test(captured.join('')));
+    assert.ok(!/Version 2/.test(captured.join('')));
+    assert.ok(captured.join('').includes('Keine Parameteränderungen'));
     assert.equal(pdfBytes.subarray(0, 4).toString(), '%PDF');
     assert.ok(pdfBytes.length > 5000);
     captured = [];
-    engine.exportReportPDF(recording, { start: 40, end: 60 });
-    assert.ok(captured.some(text => /Version 2/.test(text)));
+    await engine.exportReportPDF(recording, { start: 40, end: 60 });
+    assert.ok(/Version 2/.test(captured.join('')));
     assert.match(captured.join(' '), /00:40 - Version 2/);
     recording.source = 'replay';
     captured = [];
-    engine.exportReportPDF(recording, { start: 0, end: 20 });
+    await engine.exportReportPDF(recording, { start: 0, end: 20 });
     assert.match(captured.join(' '), /Quelle: Wiedergabe.*gespeicherte Messwerte/);
     assert.doesNotMatch(captured.join(' '), /Quelle: Sensor/);
     engine.useSensor('thermo_uc');
     const thermalRecording = engine.createInitialState().recordings[0];
     engine.useSensor('ild1900');
     captured = [];
-    engine.exportReportPDF(thermalRecording, { start: 0, end: 20 });
+    await engine.exportReportPDF(thermalRecording, { start: 0, end: 20 });
     assert.ok(captured.includes('Temperatur / °C'));
     assert.ok(captured.includes('50 Hz / °C'));
     assert.ok(captured.some(text => text.includes('25,00 °C')));
-  } finally { engine.useSensor('ild1900'); delete globalThis.jspdf; }
+  } finally { engine.useSensor('ild1900'); delete globalThis.jspdf; globalThis.fetch = originalFetch; }
 });
 
 test('the simple bridge accepts millimetres and rejects an explicitly different sensor', () => {

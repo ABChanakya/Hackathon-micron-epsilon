@@ -1,4 +1,12 @@
 export default {
+  "Slope": "변화율",
+  "Trend über 1 s": "1초간 추세",
+  "Aktueller Slope": "현재 변화율",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "변화율 그래프: 시간에 따른 초당 변화량",
+  "Warte auf Messwerte": "측정값 대기 중",
+  "Noch nicht genügend Messwerte": "측정값이 아직 부족합니다",
+  "Keine gültigen Messwerte": "유효한 측정값 없음",
+  "Messreihe unterbrochen": "측정 데이터가 중단되었습니다",
   "Farbschema": "화면 모드",
   "Zur Hauptseite": "홈으로 돌아가기",
   "Hauptseite": "홈",

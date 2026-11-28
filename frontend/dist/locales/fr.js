@@ -1,5 +1,13 @@
 // Monitor translations. Preserve source keys and named placeholders.
 export default {
+  "Slope": "Pente",
+  "Trend über 1 s": "Tendance sur 1 s",
+  "Aktueller Slope": "Pente actuelle",
+  "Slope-Diagramm: Änderung pro Sekunde über Zeit": "Graphique de pente : variation par seconde au fil du temps",
+  "Warte auf Messwerte": "En attente de mesures",
+  "Noch nicht genügend Messwerte": "Pas encore assez de mesures",
+  "Keine gültigen Messwerte": "Aucune mesure valide",
+  "Messreihe unterbrochen": "Série de mesures interrompue",
   "Farbschema": "Thème",
   "Zur Hauptseite": "Retour à l’accueil",
   "Hauptseite": "Accueil",
