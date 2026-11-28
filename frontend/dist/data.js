@@ -39,9 +39,12 @@ export function useSensor(id, info = null) {
 }
 
 // Which known sensor a backend /api/status describes, or null.
+const DEVICE_SENSORS = { ild1900: 'ild1900', thermo_uc: 'thermo_uc' };   // device families this monitor has a layout for
 export function sensorFromStatus(status) {
   const info = status?.info;
   if (!info) return null;
+  // The backend's device check (backend/device.py) decides first: an unverified device never reaches the UI elements.
+  if (status.device) return status.device.verified === true ? (DEVICE_SENSORS[status.device.family] ?? null) : null;
   const code = sensorCode(info.model);
   if (info.unit === 'mm' && ['ild190010', 'optoncdt190010', 'ild1900', 'simild190010'].includes(code) &&
       info.range_mm === SENSORS.ild1900.range && info.smr_mm === SENSORS.ild1900.rangeStart) return 'ild1900';

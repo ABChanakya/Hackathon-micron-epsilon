@@ -38,6 +38,17 @@ Die neue Präsentationsseite erreichst du unter http://127.0.0.1:8000/pitch/.
 Welcher Sensor an welchem USB-Anschluss hängt, beantwortet `GET /api/sensors/scan?probe=true`; jeder Anschluss wird
 dabei nur lesend gefragt. `POST /api/connect` mit `{"sensor":"AUTO"}` verbindet den ersten Sensor, der antwortet.
 
+## Gerätecheck und Handy-Ansicht
+
+`backend/device.py` prüft, welches Gerät verbunden ist (Modell, Einheit, Messbereich, Treiber) und ob es ein echter
+Sensor, der Simulator oder eine Aufzeichnung ist. Das Ergebnis steht als `device` in `/api/status`, in jedem Frame und
+unter `GET /api/device`. Monitor und Handy-Ansicht zeigen ein Gerät nur, wenn es geprüft ist und ein Layout dafür
+existiert (Abstand mit 3D-Sensor und LEDs, oder Temperatur); unbekannte oder widersprüchliche Geräte werden abgewiesen.
+
+Die Handy-Ansicht liegt in `frontend/Handy frontend/`. Am Rechner: http://127.0.0.1:8000/handy/. Auf dem Handy (gleiches
+WLAN): `python3 "frontend/Handy frontend/serve.py"` und die Adresse aus dem README dort öffnen. Der Handy-Server leitet
+nur `/api/status`, `/api/latest` und `/api/device` lesend an den Messserver weiter.
+
 ## KI-Anomalieerkennung
 
 Der Messserver lernt nach dem Verbinden etwa 10 s lang, wie das Signal des Sensors normal aussieht (oder aus einer
@@ -73,7 +84,7 @@ flowchart LR
 | Ordner | Inhalt |
 |---|---|
 | `backend/` | Messserver: API, Sensortreiber (`sources.py`), KI-Anomalieerkennung (`anomaly.py`), Aufzeichnungen, `record_materials.py` für geführte Materialaufnahmen ([Backend](backend/README.md), [API](backend/API.md)) |
-| `frontend/` | Monitor (Messplatz), wird von `dist/` unverändert ausgeliefert ([Frontend](frontend/README.md)) |
+| `frontend/` | Monitor (Messplatz, `dist/`) und Handy-Ansicht (`Handy frontend/`) ([Frontend](frontend/README.md)) |
 | `scrollcraft/builds/landing/` | Präsentationsseite für den Pitch, zehn Sprachen ([README](scrollcraft/builds/landing/README.md)) |
 | `backend/recordings/` | Beispielaufnahmen des ILD1900 (sechs Materialien) zum Abspielen ohne Hardware |
 | `rag/` | Volltextsuche über die Handbücher, z. B. `python3 -I rag/query.py "MEASRATE" -f 1900` |

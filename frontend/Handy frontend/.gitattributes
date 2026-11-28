@@ -1,0 +1,3 @@
+# Keep the original measurement files byte-for-byte in every checkout.
+recordings/*.csv -text
+recordings/*.json -text

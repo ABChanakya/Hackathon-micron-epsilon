@@ -41,6 +41,7 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | Method & path | Body / query | Returns | Purpose |
 |---|---|---|---|
 | `GET /api/status` | – | State | Connection, recording and tare state |
+| `GET /api/device` | – | device \| null | Device check of the connected source (see "Device check") |
 | `GET /api/latest` | – | frame \| null | The most recent live frame (same fields as the WebSocket). For scripts and polling |
 | `GET /api/sensors/scan?probe=true` | – | list | Simulator, USB serial ports and recordings (as `REPLAY`). With `probe=true` each free port is asked (read-only) which sensor it has; without it ports are unverified candidates |
 | `POST /api/connect` | see below | State | Open a source (closes the previous one) |
@@ -138,6 +139,21 @@ Server → client only, about 25 frames/s while streaming:
 - `state_flags.led` mirrors the LED on the sensor: green = target in range, yellow = mid range, red = error, off = laser off.
 - `last_error.code`: 3 too much data for baudrate, 4 no peak, 5 peak before range, 6 peak after range, 7 cannot be calculated,
   8 global error, 9 peak too wide, 10 laser off.
+
+## Device check (`device.py`)
+One check decides what kind of device is connected and which UI may show it. The result is `device` in `/api/status`,
+in every frame of `/ws/stream` and `/ws/bridge`, and at `GET /api/device`:
+```json
+{"family": "ild1900", "label": "optoNCDT ILD1900-10", "measures": "distance", "unit": "mm", "model": "ILD1900-10",
+ "serial": "…", "origin": "hardware", "live": true, "verified": true, "problems": [],
+ "ui": {"layout": "distance", "gauge_unit": "mm", "sensor_3d": true, "leds": true}}
+```
+- `family`: `ild1900`, `ild1420`, `thermo_uc` or `unknown`. `measures`: `distance` or `temperature` (selects the layout).
+- `origin`: `hardware`, `simulator` or `replay`. `live` is true only for a verified real sensor.
+- `verified`: model, unit, measuring window and driver all agree with the family's data sheet values (ILD1900-10: mm, range 10,
+  start 20; ILD1420-50: mm, 50, 35; thermoMETER UC: °C, -50 to 900). Otherwise `problems` says why and `ui` is `null`.
+- Clients show a device only when `verified` is true and its family is one they have elements for. The desktop monitor
+  (`sensorFromStatus`) has layouts for `ild1900` and `thermo_uc`; the phone view (`live-data.mjs`) additionally needs `live`.
 
 ## Anomaly agent (`anomaly.py`)
 Learns what the connected sensor's signal normally looks like and flags what does not. It runs in the sensor thread

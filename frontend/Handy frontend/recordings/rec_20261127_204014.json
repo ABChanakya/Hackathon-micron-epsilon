@@ -1,0 +1,55 @@
+{
+  "file": "rec_20261127_204014.csv",
+  "label": "Metal-stairs | no averaging",
+  "notes": "material: Metal-stairs; 4 kHz; no averaging; static",
+  "source": "serial-ild1900",
+  "info": {
+    "model": "ILD1900",
+    "serial": "00323100070",
+    "range_mm": 10.0,
+    "smr_mm": 20,
+    "firmware": "018.000",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 4.0,
+    "averaging": {
+      "mode": "NONE",
+      "depth": null
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP"
+    ],
+    "order": [
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "COUNTER",
+      "STATE",
+      "INTENSITY1",
+      "DIST1"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T20:40:14",
+  "stopped": "2026-11-27T20:40:24",
+  "duration_s": 10.002,
+  "samples": 39922,
+  "valid": 39922,
+  "errors": 0,
+  "errors_by_code": {},
+  "dropped": 95,
+  "min_mm": 2.119598388671875,
+  "max_mm": 4.150543212890625,
+  "mean_mm": 3.134072,
+  "planned_duration_s": 10.0
+}

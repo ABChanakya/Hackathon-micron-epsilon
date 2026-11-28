@@ -5,6 +5,7 @@ from concurrent.futures import Future
 from datetime import datetime
 
 from anomaly import AnomalyAgent
+from device import identify
 from sources import ERR_BASE, MedaqSource, ReplaySource, SerialSource, SimSource, ThermoSource, probe_port, serial_ports
 
 REC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
@@ -87,7 +88,11 @@ class Hub:
                 "rec_file": os.path.basename(self.rec_path) if self.rec_path else None,
                 "rec_samples": self.rec_count, "rec_label": (self.rec_meta or {}).get("label"),
                 "rec_until_s": round(self.rec_until - time.perf_counter(), 1) if self.rec_until else None,
-                "tare_mm": self.tare, "dropped_total": self.dropped_total, "cfg": self.cfg}
+                "tare_mm": self.tare, "dropped_total": self.dropped_total, "cfg": self.cfg, "device": self.device()}
+
+    def device(self):
+        """The device check for the connected source (device.py); None while nothing is connected."""
+        return identify(self.src.kind, self.src.info) if self.src else None
 
     # ---- sensor thread ----------------------------------------------------------------
     def _connect(self, cfg):
@@ -344,7 +349,7 @@ class Hub:
                          "unit": (getattr(self.src, "info", {}) or {}).get("unit", "mm"),
                          "raw_value": last_valid,                       # latest valid reading, tare NOT applied
                          "head_c": lt.get("head_c"), "electronics_c": lt.get("electronics_c"),
-                         "ml": self.ml.frame()}
+                         "ml": self.ml.frame(), "device": identify(self.src.kind, info)}
                 self.int_sum, self.int_n = 0.0, 0
                 self.last_frame = frame
                 if self.loop and (self.clients or self.bridge_clients):
@@ -371,7 +376,8 @@ class Hub:
                 "serial": info.get("serial"), "range_start": smr, "range_end": None if smr is None or rng is None else smr + rng,
                 "range": rng, "rate_hz": f.get("rate_hz"), "intensity": f.get("intensity"),
                 "error": None if valid else (f.get("last_error") or {}).get("text") or "no valid reading",
-                "dropped_total": f.get("dropped_total"), "t": f.get("t"), "ml": f.get("ml")}
+                "dropped_total": f.get("dropped_total"), "t": f.get("t"), "ml": f.get("ml"),
+                "device": f.get("device")}
 
     def _broadcast(self, frame, bridge_msg):
         for ws in list(self.clients):

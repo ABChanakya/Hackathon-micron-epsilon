@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>Sensor Cockpit · Micro-Epsilon</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Zum Inhalt</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <img class="brand-logo" src="assets/micro-epsilon-logo.svg" width="32" height="32" alt="">
+        <span><strong>Micro-Epsilon</strong><small>Sensor Cockpit</small></span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-button" type="button" id="open-settings" aria-label="Einstellungen öffnen" title="Einstellungen" aria-haspopup="dialog"><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.24 10.06 L21.88 10.44 L21.88 13.56 L19.24 13.94 L18.50 15.75 L20.09 17.88 L17.88 20.09 L15.75 18.50 L13.94 19.24 L13.56 21.88 L10.44 21.88 L10.06 19.24 L8.25 18.50 L6.12 20.09 L3.91 17.88 L5.50 15.75 L4.76 13.94 L2.12 13.56 L2.12 10.44 L4.76 10.06 L5.50 8.25 L3.91 6.12 L6.12 3.91 L8.25 5.50 L10.06 4.76 L10.44 2.12 L13.56 2.12 L13.94 4.76 L15.75 5.50 L17.88 3.91 L20.09 6.12 L18.50 8.25 Z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></svg></button>
+        <button class="icon-button" type="button" id="open-help" aria-label="Hilfe öffnen" title="Hilfe" aria-haspopup="dialog"><svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 8a3 3 0 1 1 5 2c-2 1-2 2-2 3 M12 17v.01 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="monitor" tabindex="-1">
+    <header class="page-heading">
+      <h1>Sensor Cockpit</h1>
+      <p id="source-summary">Demodaten · optoNCDT 1900-10</p>
+    </header>
+
+    <nav class="source-tabs" aria-label="Datenquelle">
+      <button type="button" id="view-recorded" aria-pressed="true" aria-controls="recorded-view">Demodaten</button>
+      <button type="button" id="view-live" aria-pressed="false" aria-controls="live-view">Live-Daten</button>
+    </nav>
+
+    <div id="recorded-view">
+      <label class="select-field dataset-picker" for="dataset">
+        Messprofil wählen
+        <select id="dataset"></select>
+      </label>
+
+      <section class="detail-panel" aria-labelledby="demo-title">
+        <header class="detail-header">
+          <h2 id="demo-title">Abstand zum Objekt</h2>
+          <span class="status" id="demo-state" data-state="valid">Demoanzeige</span>
+        </header>
+        <div class="live-reading">
+          <span id="demo-reading">—</span><span class="reading-unit" id="demo-unit">mm</span>
+        </div>
+
+        <button type="button" id="demo-pause">
+          <svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="pause-icon"><path d="M8 5v14 M16 5v14"/></svg>
+          <svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="resume-icon" hidden><path d="m7 4 13 8-13 8z"/></svg>
+          <span id="demo-pause-label">Anzeige pausieren</span>
+        </button>
+
+        <figure id="chart" aria-labelledby="chart-title">
+          <h2 id="chart-title">Messverlauf</h2>
+          <figcaption>
+            <span class="legend-item"><span class="legend-trace" aria-hidden="true"></span>Abstand (mm)</span>
+            <span class="legend-item"><span class="legend-limit" aria-hidden="true"></span>Sollgrenzen</span>
+          </figcaption>
+          <div class="chart-frame">
+            <div class="y-labels" id="y-labels" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <div class="plot" id="plot">
+              <canvas id="trace" role="img" aria-label="Demo-Verlauf des Abstands in Millimetern im 30-Sekunden-Zeitfenster"></canvas>
+            </div>
+            <div class="x-labels" aria-label="Zeitachse">
+              <span id="chart-start">00:00</span><span id="chart-mid">00:15</span><span id="chart-end">00:30</span>
+            </div>
+          </div>
+          <p class="detail-meta" id="demo-source"></p>
+        </figure>
+      </section>
+    </div>
+
+    <section class="detail-panel" id="live-view" aria-labelledby="live-title" hidden>
+      <header class="detail-header">
+        <div>
+          <h2 id="live-title">Aktuelle Messung</h2>
+          <p class="detail-meta" id="live-model">Live-Messung</p>
+        </div>
+        <span class="status" id="live-state" role="status">Verbinde mit dem Messserver …</span>
+      </header>
+      <div class="live-reading" aria-label="Aktueller Live-Messwert">
+        <span id="live-reading">—</span><span class="reading-unit" id="live-unit"></span>
+      </div>
+      <p id="live-notice" class="detail-meta" hidden></p>
+      <figure id="live-chart" hidden>
+        <div class="chart-unit" id="live-chart-unit"></div>
+        <div class="chart-frame">
+          <div class="y-labels" id="live-axis" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="plot" id="live-plot">
+            <canvas role="img" aria-label="Live-Messverlauf der letzten 15 Sekunden" id="live-trace"></canvas>
+          </div>
+          <div class="x-labels" aria-hidden="true"><span>−15 s</span><span>Jetzt</span></div>
+        </div>
+        <figcaption>
+          <span class="legend-item"><span class="legend-trace" aria-hidden="true"></span>Messwert</span>
+          <span class="legend-item" id="live-gap" hidden><span class="legend-gap" aria-hidden="true"></span>Messlücke</span>
+        </figcaption>
+      </figure>
+    </section>
+
+    <noscript><p class="no-script">Bitte aktiviere JavaScript, um das Sensor Cockpit zu verwenden.</p></noscript>
+  </main>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <form method="dialog">
+      <h2 id="settings-title">Einstellungen</h2>
+      <div class="settings-fields">
+        <label class="select-field" for="theme">
+          Farbschema
+          <select id="theme"><option value="light">Hell</option><option value="dark">Dunkel</option></select>
+        </label>
+        <label class="select-field" for="font-size">
+          Schriftgröße
+          <select id="font-size">
+            <option value="standard">Standard</option>
+            <option value="large">Groß</option>
+            <option value="largest">Sehr groß</option>
+          </select>
+        </label>
+        <label class="check-field"><input type="checkbox" id="color-safe">Farbsehfreundlicher Modus</label>
+        <label class="check-field"><input type="checkbox" id="speech">Sprachausgabe für Statuswechsel</label>
+        <p id="speech-unavailable" hidden>Dieser Browser bietet keine Sprachausgabe an.</p>
+      </div>
+      <button class="primary" type="submit">Schließen</button>
+    </form>
+  </dialog>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <form method="dialog">
+      <h2 id="help-title">Hilfe</h2>
+      <ul>
+        <li>Öffne Live-Daten, um die aktuelle Messung vom Sensorserver am Rechner zu sehen.</li>
+        <li>Die Desktop-Demo beginnt bei null und erzeugt fünf simulierte Messwerte pro Sekunde.</li>
+        <li>Mit Anzeige pausieren hältst du den dargestellten Stand fest. Beim Fortsetzen springt die Anzeige ins aktuelle 30-Sekunden-Fenster.</li>
+        <li>Unter Einstellungen kannst du Schriftgröße, farbsehfreundliche Farben und Sprachausgabe einstellen.</li>
+      </ul>
+      <button class="primary" type="submit">Schließen</button>
+    </form>
+  </dialog>
+</body>
+</html>

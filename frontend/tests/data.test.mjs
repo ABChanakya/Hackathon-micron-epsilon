@@ -483,3 +483,12 @@ test('CSV exports retain recorded units after switching the active sensor', asyn
     delete globalThis.document;
   }
 });
+
+test('the backend device check decides which sensor a status describes', () => {
+  const info = { model: 'ILD1900-10', unit: 'mm', range_mm: 10, smr_mm: 20 };
+  const device = { family: 'ild1900', verified: true };
+  assert.equal(engine.sensorFromStatus({ info, device }), 'ild1900');
+  assert.equal(engine.sensorFromStatus({ info, device: { ...device, verified: false } }), null);
+  assert.equal(engine.sensorFromStatus({ info, device: { family: 'ild1420', verified: true } }), null);   // no layout for it here
+  assert.equal(engine.sensorFromStatus({ info: { model: 'UC-SF22-S3', unit: '°C' }, device: { family: 'thermo_uc', verified: true } }), 'thermo_uc');
+});

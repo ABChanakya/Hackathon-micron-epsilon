@@ -72,6 +72,12 @@ async def _do(fn, *a):
         raise HTTPException(400, str(e))
 
 
+@app.get("/api/device")
+def device():
+    """Device check of the connected source: family, what it measures, hardware/simulator/replay, verified, problems."""
+    return hub.device()
+
+
 @app.get("/api/latest")
 def latest():
     """The most recent live frame (same fields as the WebSocket), or null before the first one. For scripts and polling."""
@@ -329,5 +335,9 @@ LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scroll
 app.mount("/diagnostics", StaticFiles(directory=STATIC, html=True), name="diagnostics")
 if os.path.isfile(os.path.join(LANDING, "index.html")):
     app.mount("/pitch", StaticFiles(directory=LANDING, html=True), name="pitch")
+PHONE = next((p for p in (os.path.join(FRONTEND, "..", "Handy frontend"), os.path.join(FRONTEND, "..", "..", "Handy frontend"))
+              if os.path.isfile(os.path.join(p, "index.html"))), None)
+if PHONE:    # the phone view; on a phone use its own relay (Handy frontend/serve.py), which reads this API
+    app.mount("/handy", StaticFiles(directory=PHONE, html=True), name="handy")
 app.mount("/", StaticFiles(directory=FRONTEND if os.path.isfile(os.path.join(FRONTEND, "index.html")) else STATIC,
                            html=True), name="static")

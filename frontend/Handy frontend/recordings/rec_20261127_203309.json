@@ -1,0 +1,55 @@
+{
+  "file": "rec_20261127_203309.csv",
+  "label": "paper-black-and-white | median 9",
+  "notes": "material: paper-black-and-white; 4 kHz; median 9; static",
+  "source": "serial-ild1900",
+  "info": {
+    "model": "ILD1900",
+    "serial": "00323100070",
+    "range_mm": 10.0,
+    "smr_mm": 20,
+    "firmware": "018.000",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 4.0,
+    "averaging": {
+      "mode": "MEDIAN",
+      "depth": 9
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP"
+    ],
+    "order": [
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "COUNTER",
+      "STATE",
+      "INTENSITY1",
+      "DIST1"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T20:33:09",
+  "stopped": "2026-11-27T20:33:19",
+  "duration_s": 10.0,
+  "samples": 40007,
+  "valid": 40007,
+  "errors": 0,
+  "errors_by_code": {},
+  "dropped": 1,
+  "min_mm": 3.925933837890625,
+  "max_mm": 6.020050048828125,
+  "mean_mm": 5.53711,
+  "planned_duration_s": 10.0
+}

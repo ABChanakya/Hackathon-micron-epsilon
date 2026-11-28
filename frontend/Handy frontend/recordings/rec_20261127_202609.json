@@ -1,0 +1,55 @@
+{
+  "file": "rec_20261127_202609.csv",
+  "label": "ILD1900 white plastic | median 9",
+  "notes": "material: white plastic; 4 kHz; median 9; static, flat at ~25 mm from the sensor face",
+  "source": "serial-ild1900",
+  "info": {
+    "model": "ILD1900",
+    "serial": "00323100070",
+    "range_mm": 10.0,
+    "smr_mm": 20,
+    "firmware": "018.000",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 4.0,
+    "averaging": {
+      "mode": "MEDIAN",
+      "depth": 9
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP"
+    ],
+    "order": [
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "COUNTER",
+      "STATE",
+      "INTENSITY1",
+      "DIST1"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T20:26:09",
+  "stopped": "2026-11-27T20:26:19",
+  "duration_s": 10.003,
+  "samples": 40035,
+  "valid": 40035,
+  "errors": 0,
+  "errors_by_code": {},
+  "dropped": 0,
+  "min_mm": 4.365997314453125,
+  "max_mm": 4.37652587890625,
+  "mean_mm": 4.373024,
+  "planned_duration_s": 10.0
+}

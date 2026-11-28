@@ -1,0 +1,55 @@
+{
+  "file": "rec_20261127_203725.csv",
+  "label": "white-stairs-plastic | no averaging",
+  "notes": "material: white-stairs-plastic; 4 kHz; no averaging; static",
+  "source": "serial-ild1900",
+  "info": {
+    "model": "ILD1900",
+    "serial": "00323100070",
+    "range_mm": 10.0,
+    "smr_mm": 20,
+    "firmware": "018.000",
+    "unit": "mm"
+  },
+  "settings": {
+    "rate_khz": 4.0,
+    "averaging": {
+      "mode": "NONE",
+      "depth": null
+    },
+    "channels": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP",
+      "SHUTTER"
+    ],
+    "channels_active": [
+      "COUNTER",
+      "INTENSITY",
+      "STATE",
+      "TIMESTAMP"
+    ],
+    "order": [
+      "TIMESTAMPLO",
+      "TIMESTAMPHI",
+      "COUNTER",
+      "STATE",
+      "INTENSITY1",
+      "DIST1"
+    ]
+  },
+  "tare_mm": null,
+  "started": "2026-11-27T20:37:25",
+  "stopped": "2026-11-27T20:37:35",
+  "duration_s": 10.006,
+  "samples": 40007,
+  "valid": 40007,
+  "errors": 0,
+  "errors_by_code": {},
+  "dropped": 25,
+  "min_mm": 2.105865478515625,
+  "max_mm": 4.4256591796875,
+  "mean_mm": 3.605328,
+  "planned_duration_s": 10.0
+}
