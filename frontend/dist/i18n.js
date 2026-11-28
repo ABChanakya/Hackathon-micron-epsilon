@@ -1,4 +1,4 @@
-import english from './locales/en.js?v=ui-review-3';
+import english from './locales/en.js?v=alarm-1';
 import cockpitCopy from './locales/cockpit-copy.js?v=ui-review-3';
 import settingsCopy from './locales/settings-copy.js?v=ui-review-3';
 import mobileCopy from './locales/mobile-copy.js?v=phone-live-1';
@@ -53,7 +53,7 @@ export const getLocale = (code = language) => LANGUAGES.find(item => item.code =
 async function loadLanguage(code) {
   if (code === 'de' || dictionaries.has(code)) return;
   if (!loading.has(code)) {
-    loading.set(code, import(`./locales/${code}.js?v=ui-review-3`).then(module => {
+    loading.set(code, import(`./locales/${code}.js?v=alarm-1`).then(module => {
       dictionaries.set(code, {...module.default, ...revisionMessages(code)});
       compiled.delete(code);
     }).catch(() => {

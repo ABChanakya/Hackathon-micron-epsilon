@@ -1,11 +1,12 @@
+import {createAlarmPlayer} from './alarm-audio.js?v=alarm-1';
 import {createDesktopFactoryPlan} from './factory-plan.js?v=building-plan-live-1';
 import {pdfText} from './pdf-i18n.js?v=ui-review-3';
 import {SENSOR, DISPLAY_RATE, createInitialState, loadState, saveState, makeDemoPoints, acceptFeedback, acceptRange, fitToTraining, undoLearning, resetLearning, exportRecordingCSV, exportReportPDF, statistics, slicePoints, formatDuration, generateId, matchesBackendSensor, parseBridgeSample, bridgeLedState, useSensor, sensorFromStatus, adoptSensor, unitOf} from './data.js?v=ui-review-3';
 import {buildSlopeSeries} from './measurement-series.js?v=slope-1';
-import {LANGUAGES, getLanguage, getLocale, setLanguage, applyTranslations, startTranslations} from './i18n.js?v=phone-live-1';
-import {createAssistantUI} from './assistant-ui.js?v=phone-live-1';
+import {LANGUAGES, getLanguage, getLocale, setLanguage, applyTranslations, startTranslations} from './i18n.js?v=alarm-1';
+import {createAssistantUI} from './assistant-ui.js?v=alarm-1';
 import {assistantText} from './assistant-i18n.js?v=ui-review-3';
-import {installHints, announce} from './hints.js?v=phone-live-2';
+import {installHints, announce} from './hints.js?v=alarm-1';
 import {createSettingsDraftStore,readSettingsForm,restoreSettingsForm,validateProfileFields,validateProfileSettings,validateConnectionSettings,validateMlSettings,mlSettingsValues,mlOperatingState,mlEventTime,ML_FIELD_LIMITS} from './settings-revisions.js?v=settings-2';
 
 // The 3D sensor view is only for devices whose data call for it: a verified distance sensor (backend device check:
@@ -33,7 +34,7 @@ const icons={
 };
 const icon=(name,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icons[name]||icons.info}"/></svg>`;
 let state,bootError='';try{state=loadState()}catch(e){state=createInitialState();bootError=e.message}
-const rt={route:'monitor',mode:'bridge',connected:false,paused:false,channelBreak:false,lastValidAt:null,breaks:[],scaleMode:'spec',tableSnapshot:null,tableOpen:false,highlightTime:null,pdfBusy:false,elapsed:0,value:SENSOR.midpoint,points:[],markers:[],zeroOffset:0,window:30,record:null,saving:false,unsaved:null,lastSaved:null,deviation:null,lastFeedback:null,cooldown:0,scenario:'normal',feedback:[],viewer:null,dialogViewer:null,led:{state:'unknown',output:'unknown'},selected:new Set(),analysis:null,offset:0,replayTime:0,replayPlaying:false,replaySpeed:1,reportStart:0,reportEnd:60,setupStep:1,setupMode:'bridge',setupChecked:false,socket:null,socketTimer:null,retryTimer:null,backendStatus:null,ports:[],simAvailable:false,backendAvailable:false,bridgeUrl:state.settings.bridgeUrl||defaultBridgeUrl(),connectionError:'',storageError:bootError,charts:[],factory:null,factoryBase:'',activityOpen:false,tick:0,errorEvents:[],activeErrorKeys:new Set(),alertSound:true,alertAudio:null,deviationAlarmTimer:null,deviationAlarmMode:'single',outsideEpisode:false};
+const rt={route:'monitor',mode:'bridge',connected:false,paused:false,channelBreak:false,lastValidAt:null,breaks:[],scaleMode:'spec',tableSnapshot:null,tableOpen:false,highlightTime:null,pdfBusy:false,elapsed:0,value:SENSOR.midpoint,points:[],markers:[],zeroOffset:0,window:30,record:null,saving:false,unsaved:null,lastSaved:null,deviation:null,lastFeedback:null,cooldown:0,scenario:'normal',feedback:[],viewer:null,dialogViewer:null,led:{state:'unknown',output:'unknown'},selected:new Set(),analysis:null,offset:0,replayTime:0,replayPlaying:false,replaySpeed:1,reportStart:0,reportEnd:60,setupStep:1,setupMode:'bridge',setupChecked:false,socket:null,socketTimer:null,retryTimer:null,backendStatus:null,ports:[],simAvailable:false,backendAvailable:false,bridgeUrl:state.settings.bridgeUrl||defaultBridgeUrl(),connectionError:'',storageError:bootError,charts:[],factory:null,factoryBase:'',activityOpen:false,tick:0,errorEvents:[],activeErrorKeys:new Set(),alertSound:true,deviationAlarmTimer:null,deviationAlarmMode:'single',outsideEpisode:false};
 try{rt.alertSound=localStorage.getItem('me-error-sound')!=='off';rt.deviationAlarmMode=localStorage.getItem('me-deviation-alarm-mode')==='repeat'?'repeat':'single'}catch{}
 let toastTimer,dialogType='',dialogContext=null,lastTick=performance.now(),assistant;
 const profile=()=>state.profiles.find(p=>p.id===state.activeProfileId)||state.profiles[0];
@@ -74,17 +75,75 @@ function assistantError(){
 }
 const storageRecoveryMessage='Die Originaldaten bleiben erhalten. Lokales Speichern ist gesperrt. Neue Aufnahmen kannst du als CSV sichern.';
 function persist(){if(bootError){rt.storageError=bootError;toast(storageRecoveryMessage);return false}try{saveState(state);rt.storageError='';resolveIncident('storage');return true}catch(e){rt.storageError=e.message;reportIncident('storage','Speichern nicht möglich',e.message);toast(e.message);return false}}
-function primeAlertAudio(){if(!rt.alertSound)return;try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;rt.alertAudio??=new Audio();if(rt.alertAudio.state==='suspended')rt.alertAudio.resume().catch(()=>{})}catch{}}
-function playAlertSound(){if(!rt.alertSound)return;try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;const ctx=rt.alertAudio??=new Audio();const play=()=>{if(ctx.state!=='running')return;[920,920,760].forEach((hz,i)=>{const start=ctx.currentTime+i*.19,osc=ctx.createOscillator(),gain=ctx.createGain();osc.type='square';osc.frequency.setValueAtTime(hz,start);gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(.2,start+.012);gain.gain.setValueAtTime(.2,start+.105);gain.gain.exponentialRampToValueAtTime(.0001,start+.125);osc.connect(gain);gain.connect(ctx.destination);osc.start(start);osc.stop(start+.13)})};if(ctx.state==='suspended')ctx.resume().then(play).catch(()=>{});else play()}catch{}}
-function startDeviationAlarm(){if(!rt.alertSound||rt.deviationAlarmMode!=='repeat'||rt.deviationAlarmTimer)return;playAlertSound();rt.deviationAlarmTimer=setInterval(()=>playAlertSound(),1600)}
+let alarmPlayer;
+const missedAlarms = new Set();
+let alarmTestMessage = '';
+
+function audioMessage() {
+  if (alarmTestMessage) return alarmTestMessage;
+  if (!rt.alertSound || alarmPlayer?.state === 'ready') return '';
+  return alarmPlayer?.state === 'unavailable'
+    ? 'Tonausgabe nicht verfügbar. Prüfe die Audioausgabe des Browsers.'
+    : 'Der Browser hat den Ton noch nicht freigegeben.';
+}
+
+function updateAudioControls() {
+  const unlock = $('#unlock-alert-sound'), status = $('#alert-audio-status');
+  if (unlock) unlock.hidden = !rt.alertSound || alarmPlayer?.state === 'ready';
+  if (status) {
+    status.textContent = audioMessage();
+    status.hidden = !status.textContent;
+    applyTranslations(status);
+  }
+}
+
+async function primeAlertAudio() {
+  if (!rt.alertSound || !alarmPlayer) return;
+  if (alarmPlayer.state !== 'ready' && !await alarmPlayer.unlock()) return;
+  if (rt.alertSound && [...missedAlarms].some(key => rt.activeErrorKeys.has(key))) {
+    if (alarmPlayer.play()) missedAlarms.clear();
+  }
+}
+
+function playAlertSound(key) {
+  if (!rt.alertSound || !alarmPlayer) return;
+  if (!alarmPlayer.play() && key) missedAlarms.add(key);
+}
+
+async function testAlertSound() {
+  if (!alarmPlayer) return;
+  const played = await alarmPlayer.unlock() && alarmPlayer.play();
+  if (played) missedAlarms.clear();
+  alarmTestMessage = played ? 'Testton abgespielt.' : alarmPlayer.state === 'locked'
+    ? 'Der Browser hat den Ton noch nicht freigegeben.'
+    : 'Tonausgabe nicht verfügbar. Prüfe die Audioausgabe des Browsers.';
+  updateAudioControls();
+}
+function startDeviationAlarm(){if(!rt.alertSound||rt.deviationAlarmMode!=='repeat'||rt.deviationAlarmTimer)return;const sound=()=>playAlertSound(rt.activeErrorKeys.has('deviation')?'deviation':'ml-anomaly');sound();rt.deviationAlarmTimer=setInterval(sound,1600)}
 function stopDeviationAlarm(){if(rt.deviationAlarmTimer){clearInterval(rt.deviationAlarmTimer);rt.deviationAlarmTimer=null}}
 function setDeviationAlarmMode(mode){rt.deviationAlarmMode=mode==='repeat'?'repeat':'single';try{localStorage.setItem('me-deviation-alarm-mode',rt.deviationAlarmMode)}catch{}if(rt.deviationAlarmMode==='repeat'&&(rt.activeErrorKeys.has('deviation')||rt.activeErrorKeys.has('ml-anomaly')))startDeviationAlarm();else stopDeviationAlarm();toast(rt.deviationAlarmMode==='repeat'?'Der Alarm wiederholt sich, bis der Wert wieder in den Grenzen liegt.':'Ein Signalton pro Überschreitung.')}
-function reportIncident(key,type,message){if(rt.activeErrorKeys.has(key))return;rt.activeErrorKeys.add(key);rt.errorTotal=(rt.errorTotal||0)+1;rt.errorEvents.unshift({id:generateId('error'),time:new Date().toISOString(),type,message});rt.errorEvents=rt.errorEvents.slice(0,5);if(['deviation','ml-anomaly'].includes(key)&&rt.deviationAlarmMode==='repeat')startDeviationAlarm();else playAlertSound();const n=$('#error-count');if(n)n.textContent=String(rt.errorTotal);}
+function reportIncident(key,type,message){if(rt.activeErrorKeys.has(key))return;rt.activeErrorKeys.add(key);rt.errorTotal=(rt.errorTotal||0)+1;rt.errorEvents.unshift({id:generateId('error'),time:new Date().toISOString(),type,message});rt.errorEvents=rt.errorEvents.slice(0,5);if(['deviation','ml-anomaly'].includes(key)&&rt.deviationAlarmMode==='repeat')startDeviationAlarm();else playAlertSound(key);const n=$('#error-count');if(n)n.textContent=String(rt.errorTotal);}
 // The factory plan (shared with the phone view: /handy/fabrikplan/karte.mjs) sits below the measuring area. It lives
 // outside #app so the frequent re-renders do not rebuild it. The real sensor drives one of its modules; simulated
 // modules that go into alarm are reported like any other incident (sound and error list).
-function resolveIncident(key){rt.activeErrorKeys.delete(key);if(['deviation','ml-anomaly'].includes(key)&&!rt.activeErrorKeys.has('deviation')&&!rt.activeErrorKeys.has('ml-anomaly'))stopDeviationAlarm()}
-function toggleAlertSound(){rt.alertSound=!rt.alertSound;try{localStorage.setItem('me-error-sound',rt.alertSound?'on':'off')}catch{}if(rt.alertSound){primeAlertAudio();if(rt.activeErrorKeys.has('deviation'))startDeviationAlarm()}else stopDeviationAlarm();render();toast(rt.alertSound?'Alarmton aktiviert.':'Alarmton ausgeschaltet.')}
+function resolveIncident(key){missedAlarms.delete(key);rt.activeErrorKeys.delete(key);if(['deviation','ml-anomaly'].includes(key)&&!rt.activeErrorKeys.has('deviation')&&!rt.activeErrorKeys.has('ml-anomaly'))stopDeviationAlarm()}
+function toggleAlertSound() {
+  rt.alertSound = !rt.alertSound;
+  alarmTestMessage = '';
+  try { localStorage.setItem('me-error-sound', rt.alertSound ? 'on' : 'off'); } catch {}
+  if (rt.alertSound) {
+    const repeating = rt.deviationAlarmMode === 'repeat' &&
+      (rt.activeErrorKeys.has('deviation') || rt.activeErrorKeys.has('ml-anomaly'));
+    if (repeating) startDeviationAlarm();
+    else for (const key of rt.activeErrorKeys) missedAlarms.add(key);
+    primeAlertAudio();
+  } else {
+    missedAlarms.clear();
+    stopDeviationAlarm();
+  }
+  render();
+  toast(rt.alertSound ? 'Alarmton aktiviert.' : 'Alarmton ausgeschaltet.');
+}
 function toast(message){clearTimeout(toastTimer);const el=$('#toast');el.textContent=message;el.classList.add('show');toastTimer=setTimeout(()=>el.classList.remove('show'),4500)}
 function placeToast(el){const main=$('#main');if(!el||!main)return;($('#activity-status')||main).append(el)}
 function setProfile(p){state.profiles=state.profiles.map(x=>x.id===p.id?p:x)}
@@ -273,7 +332,42 @@ function fitLimitsToTraining(range){
   setProfile(r.profile);persist();toast(`Auswertungsgrenzen an die Trainingsdaten angepasst: ${num(r.event.nextLower)}–${num(r.event.nextUpper)} ${U()}.`);
   if(rt.route==='advanced'||rt.route==='monitor')render();
 }
-function mlFrame(ml){rt.ml=ml;fitLimitsToTraining(ml.train_range);if(ml.state!=='alert')resolveIncident('ml-anomaly');const kn=ml.known;if(kn&&kn.id!==rt.mlKnownSeen&&!rt.deviation?.ml&&!rt.paused){reportIncident('ml-anomaly','Bekannte Anomalie erkannt',`${mlReason(kn.reason)}${kn.label_note?' · '+kn.label_note:''}`);rt.mlKnownSeen=kn.id;rt.mlKnown=kn;announce('KI: Bekannte Anomalie erkannt.');rt.deviation=null;rt.cooldown=rt.elapsed+10;if(rt.record)rt.record.markers.push({id:generateId('ml-known'),t:Math.max(0,rt.elapsed-rt.record.startElapsed),note:`KI · Bekannte Anomalie${kn.label_note?': '+kn.label_note:''}`});const target=$('#learning-notice');if(target){target.innerHTML=learningNotice();refreshActivitySummary()}}const ev=ml.pending;if(ev&&ev.id!==rt.mlSeen&&!rt.deviation?.ml&&!rt.paused){reportIncident('ml-anomaly','Anomalie erkannt',`${mlReason(ev.reason)} · score ${mlNum(ev.score)}`);rt.mlSeen=ev.id;announce('KI: Auffälligkeit erkannt. Bitte bewerten.');refreshSuggest();rt.deviation={value:ev.value,t:rt.elapsed,profile:clone(profile()),ml:ev};rt.lastFeedback=null;const target=$('#learning-notice');if(target){target.innerHTML=learningNotice();refreshActivitySummary()}}}
+function mlFrame(ml) {
+  const previous = rt.ml;
+  rt.ml = ml;
+  fitLimitsToTraining(ml.train_range);
+  const known = ml.known, pending = ml.pending;
+  if (ml.state === 'error') {
+    reportIncident('ml-anomaly', 'Sensorfehler', mlReason(ml.reason));
+  } else if (ml.state !== 'alert') {
+    resolveIncident('ml-anomaly');
+  } else if (known && known.id !== previous?.known?.id) {
+    reportIncident('ml-anomaly', 'Bekannte Anomalie erkannt',
+      mlReason(known.reason) + (known.label_note ? ' · ' + known.label_note : ''));
+  } else if (pending && pending.id !== previous?.pending?.id) {
+    reportIncident('ml-anomaly', 'Anomalie erkannt', mlReason(pending.reason) + ' · score ' + mlNum(pending.score));
+  }
+
+  // Feedback may stay on screen after the event ends. It must not mute a new incident.
+  if (rt.deviation?.ml || rt.paused) return;
+  if (known && known.id !== rt.mlKnownSeen) {
+    rt.mlKnownSeen = known.id;
+    rt.mlKnown = known;
+    announce('KI: Bekannte Anomalie erkannt.');
+    rt.deviation = null;
+    rt.cooldown = rt.elapsed + 10;
+    if (rt.record) rt.record.markers.push({id: generateId('ml-known'), t: Math.max(0, rt.elapsed - rt.record.startElapsed),
+      note: 'KI · Bekannte Anomalie' + (known.label_note ? ': ' + known.label_note : '')});
+  } else if (pending && pending.id !== rt.mlSeen) {
+    rt.mlSeen = pending.id;
+    announce('KI: Auffälligkeit erkannt. Bitte bewerten.');
+    refreshSuggest();
+    rt.deviation = {value: pending.value, t: rt.elapsed, profile: clone(profile()), ml: pending};
+    rt.lastFeedback = null;
+  } else return;
+  const target = $('#learning-notice');
+  if (target) { target.innerHTML = learningNotice(); refreshActivitySummary(); }
+}
 function nearestLine(e){const n=e?.nearest;return n?`<p class="suggest"><strong>Ähnlichste bekannte Daten:</strong> <span data-i18n-skip>${esc(n.note||'ohne Name')}</span> (${n.cls==='anomaly'?'Anomalie':'normal'}). ${e.reason==='no_match'?'Zu keinen bekannten Daten passend, bitte beurteilen: Deine Antwort wird als beschriftete Daten gelernt.':''}</p>`:''}
 function mlNotice(d){const e=d.ml;return `<section class="notice" aria-label="Auffälligkeit">${icon('spark')}<div class="notice-body"><strong>KI-Auffälligkeit · ${esc(mlReason(e.reason))}</strong><p><span>Ereignis bei</span> <span class="mono">${formatDuration(d.t)}</span> · ${e.value!=null?`<span class="mono">${num(e.value)} ${U()}</span> · `:''}${mlNum(e.score)}-fache Abweichung vom gelernten Normalzustand (Meldung ab ${mlNum(rt.ml?.sensitivity??6)}). Bewerte dieses Signalmuster.</p><button type="button" class="text-button" data-action="focus-event">Im Diagramm anzeigen</button>${nearestLine(e)}${suggestLine()}<input class="feedback-note" id="feedback-note" placeholder="Optionale Begründung …" aria-label="Begründung zur Bewertung" maxlength="300"><div class="notice-actions" data-feedback-kind="ml"><button class="btn compact" data-action="feedback" data-accepted="true">${icon('check')} Als Normalmuster lernen</button><button class="btn quiet compact" data-action="feedback" data-accepted="false">${icon('close')} Als Anomalie lernen</button></div></div><button class="icon-button" data-action="dismiss-deviation" aria-label="Später bewerten">${icon('close')}</button></section>`}
 function learningNotice(){if(rt.deviation?.ml)return mlNotice(rt.deviation);if(rt.mlKnown&&!rt.deviation){const e=rt.mlKnown;return `<section class="notice error" aria-label="Bekannte Anomalie">${icon('alert')}<div class="notice-body"><strong>Anomalie erkannt${e.label_note?' · '+esc(e.label_note):''}</strong><p>${e.value!=null?`<span class="mono">${num(e.value)} ${U()}</span> · `:''}Gleicht einer als „nicht in Ordnung“ gelernten Messung. Auffälligstes Merkmal: ${esc(mlReason(e.reason))}.</p></div><button class="icon-button" data-action="dismiss-known" aria-label="Hinweis schließen">${icon('close')}</button></section>`}if(rt.lastFeedback?.ml){const e=rt.lastFeedback;return `<section class="notice success">${icon('check')}<div class="notice-body"><strong>${e.accepted?'Als normal gelernt':'Als Anomalie gelernt'}</strong><p>${e.accepted?'Ähnliche Signale werden nicht mehr gemeldet.':'Ähnliche Signale werden künftig direkt als Anomalie erkannt.'}${e.accepted&&e.limits?.changed?` Auswertungsgrenzen: ${num(e.limits.nextLower)}–${num(e.limits.nextUpper)} ${U()}.`:''}</p></div><button class="icon-button" data-action="dismiss-feedback" aria-label="Hinweis schließen">${icon('close')}</button></section>`}if(rt.deviation){const d=rt.deviation,p=d.profile;return `<section class="notice" aria-label="Messabweichung">${icon('alert')}<div class="notice-body"><strong>Außerhalb der Auswertungsgrenzen</strong><p><span>Ereignis bei</span> <span class="mono">${formatDuration(d.t)}</span> · <span class="mono">${num(d.value)} ${U()}</span> bei Auswertungsgrenzen von <span class="mono">${num(p.learnedLower)}–${num(p.learnedUpper)} ${U()}</span>.</p>${suggestLine()}<p>Diese Bewertung verändert nur die Auswertungsgrenzen. Die Sollgrenzen bleiben erhalten.</p><button type="button" class="text-button" data-action="focus-event">Im Diagramm anzeigen</button><input class="feedback-note" id="feedback-note" placeholder="Optionale Begründung …" aria-label="Begründung zur Bewertung" maxlength="300"><div class="notice-actions"><button class="btn compact" data-action="feedback" data-accepted="true">${icon('check')} Auswertungsgrenzen erweitern</button><button class="btn quiet compact" data-action="feedback" data-accepted="false">${icon('close')} Grenzen beibehalten</button><button type="button" class="btn quiet compact" data-action="assistant-error" data-i18n-skip>${icon('chat')}${esc(assistantLabel('error'))}</button></div></div><button class="icon-button" data-action="dismiss-deviation" aria-label="Später bewerten">${icon('close')}</button></section>`}
@@ -502,7 +596,7 @@ function openDialog(type,context=null){if((type==='sensor'||type==='sensor-video
 }
 function closeDialog(force=false){if(!force&&dialogType==='profile'){captureSettingsDrafts();if(settingsStore().dirty('profile-editor')){confirmSettingsAction({title:'Profiländerungen verwerfen?',message:'Die ungespeicherten Änderungen an diesem Profil werden verworfen.',onConfirm:()=>{settingsStore().clear('profile-editor');closeDialog(true)}});return}}if(dialogType==='profile')settingsStore().clear('profile-editor');rt.dialogViewer?.dispose();rt.dialogViewer=null;$('#dialog').querySelector('video')?.pause();$('#dialog').close();dialogType='';dialogContext=null}
 
-function errorCenter(){return `<section class="panel error-center" aria-label="Erkannte Fehler"><div class="error-center-head"><div><h2>Erkannte Fehler</h2><p><strong id="error-count">${rt.errorTotal||0}</strong> Vorfälle seit dem Öffnen</p></div><div class="notice-actions"><button class="btn quiet compact" data-action="toggle-alert-sound" aria-pressed="${rt.alertSound}">${rt.alertSound?'Ton an':'Ton aus'}</button><label class="small">Alarm bei Überschreitung <select data-field="deviation-alarm-mode" aria-label="Alarmton bei Überschreitung"><option value="single" ${rt.deviationAlarmMode==='single'?'selected':''}>Einmal piepen</option><option value="repeat" ${rt.deviationAlarmMode==='repeat'?'selected':''}>Wiederholen, bis der Wert stabil ist</option></select></label><button class="btn quiet compact" data-action="test-alert-sound">Ton testen</button>${rt.errorTotal?'<button class="btn quiet compact" data-action="clear-error-history">Zähler zurücksetzen</button>':''}</div></div>${rt.errorEvents.length?`<ul class="error-list">${rt.errorEvents.slice(0,3).map(e=>`<li><span class="badge">${esc(e.type)}</span><span>${esc(e.message)}</span><time>${time(e.time)}</time></li>`).join('')}</ul>`:'<p class="error-empty">Keine Fehler erkannt. Ungültige Messwerte und Überschreitungen der Profilgrenzen werden hier angezeigt.</p>'}${activityView()}</section>`}
+function errorCenter(){return `<section class="panel error-center" aria-label="Erkannte Fehler"><div class="error-center-head"><div><h2>Erkannte Fehler</h2><p><strong id="error-count">${rt.errorTotal||0}</strong> Vorfälle seit dem Öffnen</p></div><div class="notice-actions"><button class="btn quiet compact" data-action="toggle-alert-sound" aria-pressed="${rt.alertSound}">${rt.alertSound?'Alarmton ausschalten':'Alarmton einschalten'}</button><label class="small">Alarm bei Überschreitung <select data-field="deviation-alarm-mode" aria-label="Alarmton bei Überschreitung"><option value="single" ${rt.deviationAlarmMode==='single'?'selected':''}>Einmal piepen</option><option value="repeat" ${rt.deviationAlarmMode==='repeat'?'selected':''}>Wiederholen, bis der Wert stabil ist</option></select></label><button class="btn quiet compact" data-action="test-alert-sound">Ton testen</button><button class="btn quiet compact" id="unlock-alert-sound" data-action="unlock-alert-sound" ${!rt.alertSound||alarmPlayer?.state==='ready'?'hidden':''}>Alarmton freigeben</button>${rt.errorTotal?'<button class="btn quiet compact" data-action="clear-error-history">Zähler zurücksetzen</button>':''}</div></div><p class="small muted" id="alert-audio-status" role="status" ${audioMessage()?'':'hidden'}>${esc(audioMessage())}</p>${rt.errorEvents.length?`<ul class="error-list">${rt.errorEvents.slice(0,3).map(e=>`<li><span class="badge">${esc(e.type)}</span><span>${esc(e.message)}</span><time>${time(e.time)}</time></li>`).join('')}</ul>`:'<p class="error-empty">Keine Fehler erkannt. Ungültige Messwerte und Überschreitungen der Profilgrenzen werden hier angezeigt.</p>'}${activityView()}</section>`}
 function render(){const previousFactory=$('#desktop-factory'),keepFactory=Boolean(previousFactory&&rt.factory&&rt.route==='monitor'&&rt.factoryBase===rt.bridgeUrl);
 if(keepFactory)previousFactory.remove();else{rt.factory?.destroy?.();rt.factory=null}
 const activity=$('.monitor-activity');if(activity)rt.activityOpen=activity.open;
@@ -566,13 +660,30 @@ function addValue(value, {led = null, elapsed} = {}) {
   if (!Number.isFinite(value)) return;
   if (rt.mode === 'demo') rt.elapsed += 1 / DISPLAY_RATE;
   else rt.elapsed = elapsed ?? Math.max(0, (performance.now() - rt.bridgeStart) / 1000);
-  rt.value=value;rt.lastValidAt=new Date().toISOString();const point={t:rt.elapsed,value,version:profile().version,...(rt.channelBreak?{breakBefore:true}:{})};rt.channelBreak=false;rt.points.push(point);rt.points=rt.points.filter(p=>p.t>=rt.elapsed-65);if(led){rt.led=led}else if(rt.scenario==='normal'){rt.led={state:Math.abs(value-SENSOR.midpoint)<.001?'yellow':'green',output:state.settings.output==='analog'?'red':'green'}}if(rt.record)rt.record.points.push({...point,t:Math.max(0,Math.round((rt.elapsed-rt.record.startElapsed)*1000)/1000)});const p=profile(),outsideProfile=value<p.learnedLower||value>p.learnedUpper;if(!outsideProfile){resolveIncident('deviation');rt.outsideEpisode=false}else if(!rt.outsideEpisode){rt.outsideEpisode=true;if(rt.elapsed>rt.cooldown&&!rt.mlKnown&&!rt.deviation?.ml){rt.deviation={value,t:rt.elapsed,profile:clone(p)};rt.lastFeedback=null;refreshSuggest();reportIncident('deviation','Grenzwert überschritten',`Messwert ${num(value)} ${U()}; Profilgrenzen ${num(p.learnedLower)}–${num(p.learnedUpper)} ${U()}.`);if(rt.route==='monitor'){const target=$('#learning-notice');if(target){target.innerHTML=learningNotice();refreshActivitySummary()}}}}if(rt.mode==='demo'||performance.now()-(rt.lastDraw||0)>100){updateLive();drawCharts();rt.lastDraw=performance.now()}}
+  rt.value=value;rt.lastValidAt=new Date().toISOString();const point={t:rt.elapsed,value,version:profile().version,...(rt.channelBreak?{breakBefore:true}:{})};rt.channelBreak=false;rt.points.push(point);rt.points=rt.points.filter(p=>p.t>=rt.elapsed-65);if(led){rt.led=led}else if(rt.scenario==='normal'){rt.led={state:Math.abs(value-SENSOR.midpoint)<.001?'yellow':'green',output:state.settings.output==='analog'?'red':'green'}}if(rt.record)rt.record.points.push({...point,t:Math.max(0,Math.round((rt.elapsed-rt.record.startElapsed)*1000)/1000)});
+  const p = profile();
+  if (value >= p.learnedLower && value <= p.learnedUpper) {
+    resolveIncident('deviation');
+    rt.outsideEpisode = false;
+  } else if (!rt.outsideEpisode) {
+    rt.outsideEpisode = true;
+    reportIncident('deviation', 'Grenzwert überschritten',
+      `Messwert ${num(value)} ${U()}; Profilgrenzen ${num(p.learnedLower)}–${num(p.learnedUpper)} ${U()}.`);
+    if (rt.elapsed >= rt.cooldown && !rt.mlKnown && !rt.deviation?.ml) {
+      rt.deviation = {value, t: rt.elapsed, profile: clone(p)};
+      rt.lastFeedback = null;
+      refreshSuggest();
+      const target = $('#learning-notice');
+      if (target) { target.innerHTML = learningNotice(); refreshActivitySummary(); }
+    }
+  }
+  if(rt.mode==='demo'||performance.now()-(rt.lastDraw||0)>100){updateLive();drawCharts();rt.lastDraw=performance.now()}}
 function startRecord(name,cls=''){if(!name.trim()){toast('Bitte gib einen Namen für die Aufnahme ein.');return}if(rt.invalidSignal){toast('Warte auf einen gültigen Messwert.');return}if(rt.unsaved){toast('Speichere zuerst die vorherige Aufnahme.');return}if(!rt.connected){toast('Verbinde zuerst eine Datenquelle.');return}rt.paused=false;rt.lastSaved=null;rt.deviation=null;rt.lastFeedback=null;rt.record={id:generateId('run'),name,createdAt:new Date().toISOString(),source:rt.mode==='demo'?'demo':rt.backendReplay?'replay':'sensor',sensor:SENSOR.model,profile:clone(profile()),profileAtStart:clone(profile()),points:[{t:0,value:rt.value,version:profile().version}],markers:[],feedback:[],parameterHistory:[],storage:'Browser · lokal',displayRate:DISPLAY_RATE,zeroOffset:rt.zeroOffset,startElapsed:rt.elapsed};rt.record.cls=cls;rt.record.backend=false;if(rt.mode==='bridge'&&rt.connected&&cls&&!rt.backendReplay)backendRequest('/api/record/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,cls})}).then(()=>{if(rt.record)rt.record.backend=true;else backendRequest('/api/record/stop',{method:'POST'}).catch(()=>{})}).catch(error=>toast(`Die beschriftete Aufnahme konnte am Messserver nicht gestartet werden: ${error.message}`));closeDialog();render();toast(cls&&!rt.backendReplay?'Aufnahme läuft. Beschriftete Daten werden vom Messserver gelernt.':'Aufnahme läuft. Messwerte werden erfasst.')}
 function finishRecord(interrupted=false){const r=rt.record;if(!r)return null;if(r.backend)backendRequest('/api/record/stop',{method:'POST'}).then(()=>{if(r.cls)toast(`Beschriftete Aufnahme (${r.cls==='anomaly'?'Anomalie':'normal'}) an die KI übergeben.`)}).catch(()=>{});r.duration=Math.max(.2,Math.round((rt.elapsed-r.startElapsed)*1000)/1000);r.profile=clone(profile());r.interrupted=interrupted;if(r.source!=='demo')r.displayRate=Math.round(r.points.length/r.duration*100)/100;delete r.startElapsed;rt.record=null;return r}
 function saveRecording(r){if(!r)return;const old=state.recordings;state.recordings=[r,...old.filter(x=>x.id!==r.id)];if(persist()){rt.unsaved=null;rt.lastSaved=r;toast('Aufzeichnung lokal gespeichert.');render()}else{state.recordings=old;rt.unsaved=r;render()}}
 function stopRecord(){if(!rt.record)return;const r=finishRecord();rt.saving=true;render();setTimeout(()=>{rt.saving=false;saveRecording(r)},300)}
 function interruptRecord(){if(rt.record){rt.unsaved=finishRecord(true);toast('Aufnahme unterbrochen. Sichere die bisher erfassten Daten.')}}
-function useDemo(){if(rt.record||rt.saving){toast('Bitte zuerst die laufende Aufnahme stoppen.');return}disconnectSocket();resolveIncident('connection');resolveIncident('sensor');resolveIncident('deviation');rt.outsideEpisode=false;rt.backendReplay=null;rt.backendStatus=null;rt.mode='demo';rt.connected=true;rt.invalidSignal=false;rt.paused=false;rt.connectionError='';rt.scenario='normal';rt.led={state:'green',output:'green'};rt.value=profile().target;rt.elapsed=60;rt.points=makeDemoPoints(60,0,0,profile().target);rt.channelBreak=false;rt.lastValidAt=new Date().toISOString();rt.breaks=[];rt.tableSnapshot=null;rt.tableOpen=false;rt.markers=[];rt.deviation=null;rt.lastFeedback=null;rt.zeroOffset=0;closeDialog();render();toast('Demo-Sensor verbunden.')}
+function useDemo(){if(rt.record||rt.saving){toast('Bitte zuerst die laufende Aufnahme stoppen.');return}disconnectSocket();resolveIncident('connection');resolveIncident('sensor');resolveIncident('deviation');resolveIncident('ml-anomaly');rt.ml=null;rt.outsideEpisode=false;rt.backendReplay=null;rt.backendStatus=null;rt.mode='demo';rt.connected=true;rt.invalidSignal=false;rt.paused=false;rt.connectionError='';rt.scenario='normal';rt.led={state:'green',output:'green'};rt.value=profile().target;rt.elapsed=60;rt.points=makeDemoPoints(60,0,0,profile().target);rt.channelBreak=false;rt.lastValidAt=new Date().toISOString();rt.breaks=[];rt.tableSnapshot=null;rt.tableOpen=false;rt.markers=[];rt.deviation=null;rt.lastFeedback=null;rt.zeroOffset=0;closeDialog();render();toast('Demo-Sensor verbunden.')}
 function disconnectSocket() {
   rt.channelBreak=true;
   clearTimeout(rt.socketTimer);
@@ -651,6 +762,9 @@ function connectBridge(quiet=false) {
     const changed=sourceIdentity!==identity;
     if(sourceIdentity!==null&&changed){
       interruptRecord();
+      for (const key of ['sensor', 'deviation', 'ml-anomaly']) resolveIncident(key);
+      rt.ml = null;
+      rt.outsideEpisode = false;
       Object.assign(rt,{points:[],markers:[],zeroOffset:0,elapsed:0,lastValidAt:null,breaks:[],tableSnapshot:null,tableOpen:false,deviation:null,lastFeedback:null,cooldown:0,paused:false});
       gotValue=false;
     }
@@ -769,7 +883,7 @@ function connectBridge(quiet=false) {
   socket.onerror = () => fail('Die Messbrücke ist nicht erreichbar. Die Verbindung wird erneut aufgebaut.',true);
   socket.onclose = () => fail('Die Verbindung zur Messbrücke wurde getrennt. Die Verbindung wird erneut aufgebaut.',true);
 }
-function connectionFailed(message,retry=false){markInterruption('Verbindung getrennt');if(rt.connected){interruptRecord();announce('Verbindung getrennt.')}rt.connected=false;rt.invalidSignal=false;resolveIncident('deviation');rt.outsideEpisode=false;rt.connectionError=message;reportIncident('connection','Verbindung verloren',message);rt.led={state:'unknown',output:'unknown'};render();clearTimeout(rt.retryTimer);if(retry&&rt.mode==='bridge'){refreshBackend();rt.retryTimer=setTimeout(()=>connectBridge(true),3000)}}
+function connectionFailed(message,retry=false){markInterruption('Verbindung getrennt');if(rt.connected){interruptRecord();announce('Verbindung getrennt.')}rt.connected=false;rt.invalidSignal=false;for(const key of ['sensor','deviation','ml-anomaly'])resolveIncident(key);rt.ml=null;rt.outsideEpisode=false;rt.connectionError=message;reportIncident('connection','Verbindung verloren',message);rt.led={state:'unknown',output:'unknown'};render();clearTimeout(rt.retryTimer);if(retry&&rt.mode==='bridge'){refreshBackend();rt.retryTimer=setTimeout(()=>connectBridge(true),3000)}}
 function reconnect(){if(rt.mode==='demo'){rt.connected=true;rt.invalidSignal=false;rt.connectionError='';rt.scenario='normal';rt.led={state:'green',output:'green'};render();toast('Demo-Verbindung wiederhergestellt.')}else connectBridge()}
 
 async function handleAction(el,event){const action=el.dataset.action;if(settingsSaving.size&&['demo','sensor-source','connect-sensor','connect-bridge','edit-profile'].includes(action)){toast('Bitte warte, bis das Speichern abgeschlossen ist.');return}if(['demo','sensor-source','connect-sensor'].includes(action)&&settingsDirty()){confirmSettingsLeave(()=>handleAction(el,event));return}if(action==='edit-profile'){captureSettingsDrafts();if(settingsStore().dirty(settingsKey('profile'))){toast('Speichere oder verwirf zuerst die Änderungen am Messprofil.');return}}switch(action){
@@ -782,7 +896,7 @@ async function handleAction(el,event){const action=el.dataset.action;if(settings
    try { localStorage.setItem('me-theme', theme); } catch {}
    break;
  }
- case'help':openDialog('help');break;case'bridge-help':openDialog('bridge-help');break;case'connection':openDialog('connection');break;case'connect-bridge':connectBridge();break;case'scan-sensors':refreshBackend();break;case'connect-sensor':connectSensor();break;case'connect-simulator':connectSimulator();break;case'dismiss-setup':state.setupComplete=true;persist();render();break;case'toggle-alert-sound':toggleAlertSound();break;case'test-alert-sound':if(rt.alertSound){primeAlertAudio();playAlertSound()}else toast('Aktiviere zuerst den Alarmton.');break;case'clear-error-history':rt.errorEvents=[];rt.errorTotal=0;render();toast('Der Fehlerzähler wurde zurückgesetzt.');break;case'demo':useDemo();break;case'reconnect':reconnect();break;
+ case'help':openDialog('help');break;case'bridge-help':openDialog('bridge-help');break;case'connection':openDialog('connection');break;case'connect-bridge':connectBridge();break;case'scan-sensors':refreshBackend();break;case'connect-sensor':connectSensor();break;case'connect-simulator':connectSimulator();break;case'dismiss-setup':state.setupComplete=true;persist();render();break;case'toggle-alert-sound':toggleAlertSound();break;case'test-alert-sound':await testAlertSound();break;case'unlock-alert-sound':await primeAlertAudio();break;case'clear-error-history':rt.errorEvents=[];rt.errorTotal=0;render();toast('Der Fehlerzähler wurde zurückgesetzt.');break;case'demo':useDemo();break;case'reconnect':reconnect();break;
  case'edit-profile':if(rt.record){toast('Stoppe die Aufnahme, um das Profil zu ändern.');break}openDialog('profile');break;
  case'apply-profile':{const p=state.profiles.find(p=>p.id===el.dataset.id);if(!p)break;state.activeProfileId=p.id;rt.window=p.window;rt.zeroOffset=0;rt.points=rt.mode==='demo'?makeDemoPoints(60,0,0,p.target):[];if(rt.mode==='demo'){rt.elapsed=60;rt.value=p.target;}rt.markers=[];rt.deviation=null;rt.lastFeedback=null;rt.cooldown=0;persist();closeDialog();render();toast(`Profil „${p.name}“ geladen.`);break}
  case'record':if(rt.record)stopRecord();else if(rt.unsaved)toast('Speichere zuerst die vorherige Aufnahme.');else openDialog('record');break;
@@ -838,7 +952,7 @@ async function handleAction(el,event){const action=el.dataset.action;if(settings
  }}
 
 document.addEventListener('click',event=>{const link=event.target.closest('a[href]');if(link&&link.target!=='_blank'&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&link.getAttribute('href')!=='#main'){const url=new URL(link.href,location.href);if(url.href!==location.href&&(settingsSaving.size||settingsDirty())){event.preventDefault();if(settingsSaving.size)toast('Bitte warte, bis das Speichern abgeschlossen ist.');else confirmSettingsLeave(()=>location.assign(url.href))}}},true);
-document.addEventListener('click',event=>{primeAlertAudio();if(event.target.closest('.skip-link')){event.preventDefault();$('#main')?.focus();return}const el=event.target.closest('[data-action]');if(el&&!el.disabled){handleAction(el,event).catch(e=>toast(e.message))}});
+document.addEventListener('click',event=>{if(!event.target.closest('[data-action="test-alert-sound"],[data-action="toggle-alert-sound"],[data-action="unlock-alert-sound"]'))primeAlertAudio();if(event.target.closest('.skip-link')){event.preventDefault();$('#main')?.focus();return}const el=event.target.closest('[data-action]');if(el&&!el.disabled){handleAction(el,event).catch(e=>toast(e.message))}});
 document.addEventListener('toggle',event=>{if(event.target.matches?.('.phone-access')){if(event.target.open)showPhoneAddress(event.target);return}if(event.target.matches?.('.monitor-activity')){rt.activityOpen=event.target.open;return}if(event.target.matches?.('.demo-tools')){rt.demoToolsOpen=event.target.open;return}if(event.target.id!=='chart-data')return;rt.tableOpen=event.target.open;if(rt.tableOpen&&!rt.tableSnapshot){captureChartData();$('#chart-data-content').innerHTML=chartDataRows(rt.tableSnapshot);applyTranslations($('#chart-data-content'));}},true);
 for(const eventName of ['input','change'])document.addEventListener(eventName,event=>{const form=event.target.closest('[data-settings-key]');if(form){settingsStore().set(form.dataset.settingsKey,readSettingsForm(form));restoreSettingsDrafts()}});
 document.addEventListener('submit',event=>{const form=event.target.closest('[data-form]');if(!form)return;event.preventDefault();const data=new FormData(form);try{switch(form.dataset.form){
@@ -879,6 +993,10 @@ try { savedTheme = localStorage.getItem('me-theme'); } catch {}
 applyTheme(savedTheme);
 applyTextSize(savedTextSize());
 assistant=createAssistantUI({getContext:assistantContext,getChartSummary:assistantChartSummary,getError:assistantError,getApiBase:()=>rt.bridgeUrl});
-rt.window=profile().window;readRoute();startTranslations();installHints();for(const type of ['pointerdown','keydown'])document.addEventListener(type,primeAlertAudio,{once:true,capture:true});document.fonts.ready.then(()=>drawCharts());refreshBackend(true);
+alarmPlayer = createAlarmPlayer(() => { alarmTestMessage = ''; updateAudioControls(); });
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' && !event.repeat && !event.target.closest('button, a')) primeAlertAudio();
+});
+rt.window=profile().window;readRoute();startTranslations();installHints();document.fonts.ready.then(()=>drawCharts());refreshBackend(true);
 setInterval(()=>{const now=performance.now(),dt=Math.min(1,(now-lastTick)/1000);lastTick=now;if(rt.mode==='demo'&&rt.connected&&!rt.paused&&!rt.invalidSignal){rt.tick++;const t=rt.elapsed+1/DISPLAY_RATE,p=profile(),value=p.target+Math.sin(t*1.23)*.011+Math.sin(t*4.7)*.003+Math.sin(t*.31)*.004;addValue(Math.round(value*1e6)/1e6)}if(rt.mode==='bridge'&&rt.connected&&now-rt.lastBridgeAt>4000){disconnectSocket();connectionFailed('Seit vier Sekunden wurden keine neuen Messwerte empfangen. Die Verbindung wird erneut aufgebaut.',true)}if(rt.replayPlaying&&rt.route==='recordings'){const r=recording();if(r){rt.replayTime=Math.min(r.duration,rt.replayTime+dt*rt.replaySpeed);if(rt.replayTime>=r.duration){rt.replayPlaying=false;render()}else{const range=$('[data-field="replay"]');if(range)range.value=rt.replayTime;if($('#replay-time'))$('#replay-time').textContent=formatDuration(rt.replayTime);drawCharts()}}}},200);
 window.addEventListener('beforeunload',event=>{if(rt.record||rt.unsaved||settingsSaving.size||settingsDirty()){event.preventDefault();event.returnValue=''}});

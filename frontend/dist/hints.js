@@ -2,7 +2,7 @@
 // Hint texts are German source strings (translated at show time by i18n.js); they are attached after every render
 // by selector, so the page templates in app.js stay readable. Hints work with the mouse (hover), the keyboard (focus,
 // Esc closes) and touch (tap an "i" button), and the tooltip can be hovered without disappearing (WCAG 1.4.13).
-import {translateText} from './i18n.js?v=phone-live-1';
+import {translateText} from './i18n.js?v=alarm-1';
 
 const recording = el => /Stoppen/.test(el.textContent);
 const isMl = el => el?.dataset?.feedbackKind === 'ml' || /In Ordnung/.test(el.textContent);
