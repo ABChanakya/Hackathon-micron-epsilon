@@ -147,6 +147,13 @@ class AnomalyAgentTest(unittest.TestCase):
         self.assertTrue(again._ready())
         self.assertEqual(again.frame()["state"], "watching")
 
+    def test_shipped_seed_model_is_loaded_on_a_fresh_machine(self):
+        seed = anomaly.AnomalyAgent(tempfile.mkdtemp(), {**anomaly.DEFAULTS})
+        seed.start({"model": "ILD1900-10", "unit": "mm", "smr_mm": 20}, "serial-ild1900")
+        self.assertTrue(seed._ready(), "trained on the real recordings, no warm-up needed")
+        self.assertGreater(len(seed.anomaly_ex), 0, "black metal is taught as anomaly")
+        self.assertEqual(seed.frame()["state"], "watching")
+
     def test_config_validation(self):
         with self.assertRaises(ValueError):
             self.agent.set_config({"sensitivity": 0})

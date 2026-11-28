@@ -27,6 +27,7 @@ from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ML_DIR = os.path.join(BASE_DIR, "ml")
+SEED_DIR = os.path.join(BASE_DIR, "ml_seed")     # committed, trained models; used when ml/ has none for a sensor yet
 
 FEATURES = ("mean", "std", "p2p", "slope", "jitter", "err_frac", "intensity")
 TWO_SIDED = {"mean", "intensity"}           # a shift either way is unusual; all others only count upwards
@@ -180,7 +181,10 @@ class AnomalyAgent:
             self._clear_model()
             self._reset_stream()
             try:
-                with open(self.model_path()) as fh:
+                path = self.model_path()
+                if not os.path.isfile(path):       # first run on this machine: start from the shipped, trained model
+                    path = os.path.join(SEED_DIR, os.path.basename(path))
+                with open(path) as fh:
                     m = json.load(fh)
                 self.baseline.extend(m.get("baseline", []))
                 self.normal_ex, self.anomaly_ex = m.get("normal", []), m.get("anomaly", [])
