@@ -125,6 +125,8 @@ def validate_config(body, current):
 
 def _key(info):
     model = str((info or {}).get("model") or "unknown")
+    if model.startswith("ILD1900"):         # recordings say "ILD1900", the live sensor "ILD1900-10": one model
+        model = "ILD1900"
     unit = (info or {}).get("unit", "mm")
     return "".join(c if c.isalnum() or c in "-_" else "_" for c in f"{model}_{'C' if unit == '°C' else unit}")
 
