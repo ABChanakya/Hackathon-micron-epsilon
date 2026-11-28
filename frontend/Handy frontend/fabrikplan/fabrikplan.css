@@ -213,3 +213,11 @@
 .factory-section .factory-grid { scroll-snap-type: x proximity; }
 .factory-section .factory-module { scroll-snap-align: start; aspect-ratio: auto; min-height: var(--tile, 175px); }
 .factory-section .factory-live { justify-self: start; padding: 1px 6px; border-radius: 999px; background: #1f6b45; color: #fff; font: 700 .62em var(--mono); letter-spacing: .06em; }
+
+/* Light colour scheme: the plan's frame matches the recoloured floor plan (the desktop monitor styles its own). */
+:where([data-theme="light"]) .factory-section .factory-map {
+  background-color: #eef2f5;
+  background-image: linear-gradient(#c3cdd666 1px, transparent 1px), linear-gradient(90deg, #c3cdd666 1px, transparent 1px);
+}
+:where([data-theme="light"]) .factory-section .factory-links line { stroke: #60798d; }
+:where([data-theme="light"]) .factory-section .factory-links circle { fill: #18212a; stroke: #eef2f5; }

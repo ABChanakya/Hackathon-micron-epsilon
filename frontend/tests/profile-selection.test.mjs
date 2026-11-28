@@ -12,7 +12,7 @@ const views=source.slice(0,source.indexOf("document.addEventListener('click'")).
 function harness(){
  data.useSensor('ild1900');
  const writes=[],messages=[],listeners=new Map();
- const dialog={open:false,innerHTML:'',showModal(){this.open=true},close(){this.open=false},querySelector:()=>({elements:[]})};
+ const dialog={open:false,innerHTML:'',showModal(){this.open=true},close(){this.open=false},querySelector:selector=>selector==='video'?null:({elements:[]})};
  const context=vm.createContext({...data,...settings,loadState:data.createInitialState,structuredClone,assistantText,LANGUAGES,
   getLocale:()=> 'de-DE',getLanguage:()=> 'de',applyTranslations:()=>{},performance:{now:()=>0},
   saveState:state=>writes.push(structuredClone(state)),notify:message=>messages.push(message),

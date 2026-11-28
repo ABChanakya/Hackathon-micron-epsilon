@@ -33,7 +33,7 @@ test('every hover hint text is translated in every language', async () => {
 
 test('hints cover the key controls', () => {
   const selectors = HINTS.map(([selector]) => selector).join(' ');
-  for (const needed of ['record', 'pause', 'zero', 'window', 'led="state"', 'led="output"', 'feedback', 'ml-chip']) {
+  for (const needed of ['record', 'pause', 'zero', 'window', 'led="state"', 'led="output"', 'feedback']) {
     assert.ok(selectors.includes(needed), needed);
   }
 });

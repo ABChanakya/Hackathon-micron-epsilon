@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 FRONTEND = Path(__file__).resolve().parent.parent / "dist"
 LOCALE_FILES = {f"{code}.js" for code in ("en", "fr", "es", "it", "cs", "zh", "ja", "ko", "pirate")}
 LOCALE_FILES.update({"cockpit-copy.js", "settings-copy.js", "mobile-copy.js", "coverage-copy.js", "recordings-copy.js"})
-SHARED_FILES = {"/i18n.js": FRONTEND / "i18n.js", **{f"/locales/{name}": FRONTEND / "locales" / name for name in LOCALE_FILES}}
+SHARED_FILES = {"/i18n.js": FRONTEND / "i18n.js", "/factory-copy.js": FRONTEND / "factory-copy.js", **{f"/locales/{name}": FRONTEND / "locales" / name for name in LOCALE_FILES}}
 
 DATA_ENDPOINTS = {"/api/status", "/api/latest", "/api/device"}
 

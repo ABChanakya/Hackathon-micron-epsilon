@@ -37,8 +37,9 @@ function harness(){
     for(const child of this.children)child.parentElement=null;this.children=[];
     const main=new Element('main');this.append(main);main.append(new Element('global-notice'));
     if(html.includes('id="monitor-notices"')){
-      main.append(new Element('monitor-notices'));
       main.append(new Element('live-chart'));
+      const activity=new Element('error-center');main.append(activity);
+      activity.append(new Element('activity-status'));activity.append(new Element('monitor-notices'));
     }else main.append(new Element('page-content'));
   }});
   const context=vm.createContext({...data,loadState:data.createInitialState,structuredClone,document,
@@ -54,17 +55,15 @@ function harness(){
   return {toast,timers,document,run:code=>vm.runInContext(code,context)};
 }
 
-test('success messages remain before monitor notices through rerenders and notice refreshes',()=>{
+test('success messages stay below measurement cards through rerenders and notice refreshes',()=>{
   const h=harness();h.run("toast('Aufnahme gespeichert');rt.route='monitor';render()");
   const main=h.document.querySelector('#main'),notices=h.document.querySelector('#monitor-notices');
-  assert.equal(h.toast.parentElement,main);
-  assert.equal(main.children[main.children.indexOf(notices)-1],h.toast);
-  assert.ok(main.children.indexOf(h.toast)<main.children.indexOf(h.document.querySelector('#live-chart')));
+  assert.equal(h.toast.parentElement,h.document.querySelector('#activity-status'));
+  assert.ok(main.children.indexOf(h.document.querySelector('#live-chart'))<main.children.indexOf(h.document.querySelector('#error-center')));
   notices.innerHTML='<p>Neuer Verbindungsstatus</p>';
   h.run('render()');
   assert.equal(h.document.querySelector('#toast'),h.toast);
-  const refreshedNotices=h.document.querySelector('#monitor-notices');
-  assert.equal(h.toast.parentElement.children[h.toast.parentElement.children.indexOf(refreshedNotices)-1],h.toast);
+  assert.equal(h.toast.parentElement,h.document.querySelector('#activity-status'));
   assert.equal(h.toast.textContent,'Aufnahme gespeichert');
   assert.equal(h.toast.attributes.get('aria-live'),'polite');
   assert.equal(h.toast.attributes.get('role'),'status');
@@ -72,9 +71,9 @@ test('success messages remain before monitor notices through rerenders and notic
   assert.equal(h.timers.size,1,'rerender preserves the original dismissal timer');
 });
 
-test('navigation puts the same message before page content and preserves replacement and dismissal',()=>{
+test('navigation puts the same message after page content and preserves replacement and dismissal',()=>{
   const h=harness();h.run("rt.route='monitor';render();toast('Erste Meldung');toast('Profil gespeichert');rt.route='advanced';render()");
-  assert.equal(h.document.querySelector('#main').firstChild,h.toast);
+  assert.equal(h.document.querySelector('#main').children.at(-1),h.toast);
   assert.equal(h.toast.textContent,'Profil gespeichert');
   assert.equal(h.timers.size,1,'the newer message replaces the previous timer');
   const timer=[...h.timers.values()][0];assert.equal(timer.delay,4500);timer.callback();

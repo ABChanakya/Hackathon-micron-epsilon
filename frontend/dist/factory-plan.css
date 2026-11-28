@@ -1,0 +1,56 @@
+/* The same map used by the phone, presented as a normal cockpit section. */
+.desktop-factory{margin-top:24px;min-width:0;--factory-plan-filter:none;font-size:var(--font-body,16px)}
+.desktop-factory [hidden]{display:none!important}
+.desktop-factory .factory-section{margin:0;color:var(--text);font-size:var(--font-body,16px)}
+.desktop-factory .factory-section .factory-toggle{display:none}
+.desktop-factory .factory-section .factory-content{margin:0}
+.desktop-factory .factory-section .factory-panel{border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.desktop-factory .factory-section .factory-toolbar{padding:20px;gap:14px;align-items:flex-start}
+.desktop-factory .factory-section h2{font-size:20px;line-height:1.35}
+.desktop-factory .factory-section .factory-plan-note{margin:6px 0 0;color:var(--muted);font-size:var(--font-secondary,15px)}
+.desktop-factory .factory-section button,.desktop-factory .factory-section select{min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);font:inherit;font-size:var(--font-control,16px)}
+.desktop-factory .factory-section button:hover{background:var(--surface2)}
+.desktop-factory .factory-section button:focus-visible,.desktop-factory .factory-section select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.desktop-factory .factory-section .factory-zoom button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.desktop-factory .factory-section .factory-actions{padding:0 20px 16px;gap:10px 18px}
+.desktop-factory .factory-section .factory-size{font-size:var(--font-secondary,15px);flex-wrap:wrap}
+.desktop-factory .factory-section .factory-simulation,.desktop-factory .factory-section .factory-alarm{flex-basis:100%;margin:0;color:var(--muted);font-size:var(--font-secondary,15px)}
+.desktop-factory .factory-section .factory-alarm[data-state="active"],.desktop-factory .factory-section .factory-alarm[data-state="latched"]{color:var(--bad)}
+.desktop-factory .factory-section .factory-map{height:clamp(270px,34vw,430px);background-color:var(--surface2);background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);border-color:var(--line)}
+.desktop-factory .factory-section .factory-floor{filter:var(--factory-plan-filter)}
+.desktop-factory .factory-section .factory-links line{stroke:var(--muted)}
+.desktop-factory .factory-section .factory-links circle{fill:var(--text);stroke:var(--surface)}
+.desktop-factory .factory-section .factory-marker{padding:2px;background:transparent;border-color:transparent;color:var(--text)}
+.desktop-factory .factory-section .factory-marker:hover,.desktop-factory .factory-section .factory-marker[aria-pressed="true"]{background:var(--surface2)}
+.desktop-factory .factory-section .factory-symbol{min-width:36px;min-height:36px;padding:4px;border-color:var(--muted);background:var(--surface);color:var(--text);box-shadow:0 0 0 2px var(--surface2);font-size:15px}
+.desktop-factory .factory-section .factory-symbol svg{width:19px;height:19px;color:var(--text)}
+.desktop-factory .factory-section .factory-grid{background:var(--surface2);border-color:var(--line);gap:14px;padding:20px;grid-template-columns:repeat(var(--cols),minmax(var(--tile,260px),1fr))}
+.desktop-factory .factory-section .factory-grid[data-size="s"]{--tile:235px;font-size:var(--font-body,16px)}
+.desktop-factory .factory-section .factory-grid[data-size="m"]{--tile:280px;font-size:var(--font-body,16px)}
+.desktop-factory .factory-section .factory-grid[data-size="l"]{--tile:330px;font-size:var(--font-body,16px)}
+.desktop-factory .factory-section .factory-module{min-height:0;padding:14px;gap:12px;border-color:var(--line);background:var(--surface);color:var(--text)}
+.desktop-factory .factory-section .factory-module h3{font-size:17px;line-height:1.4}
+.desktop-factory .factory-section .factory-module-place{font-size:var(--font-secondary,15px);color:var(--muted);line-height:1.4}
+.desktop-factory .factory-section .factory-chip{font-size:15px;background:color-mix(in srgb,var(--good) 12%,var(--surface));color:var(--good);line-height:1.4;white-space:normal}
+.desktop-factory .factory-section .factory-tile{min-height:100px;background:var(--surface2);border-color:var(--line);padding:12px;gap:6px 10px}
+.desktop-factory .factory-section .factory-tile:hover,.desktop-factory .factory-section .factory-tile[aria-pressed="true"]{border-color:var(--accent)}
+.desktop-factory .factory-section .factory-tile-name,.desktop-factory .factory-section .factory-tile-quantity,.desktop-factory .factory-section .factory-tile-state,.desktop-factory .factory-section .factory-tile-value small{font-size:var(--font-secondary,15px);line-height:1.4;color:var(--muted)}
+.desktop-factory .factory-section .factory-tile-name{color:var(--text);font-weight:600}
+.desktop-factory .factory-section .factory-tile-value b{font-size:23px;color:var(--text)}
+.desktop-factory .factory-section .factory-tile-model{width:54px;height:42px}
+.desktop-factory .factory-section .factory-hint{padding:14px 20px;font-size:var(--font-secondary,15px);color:var(--muted);line-height:1.5}
+.desktop-factory .factory-section .factory-module[data-alarm="active"],.desktop-factory .factory-section .factory-tile[data-alarm="active"],.desktop-factory .factory-section .factory-chip[data-state="active"],.desktop-factory .factory-section .factory-marker[data-alarm="active"] .factory-symbol{animation-name:desktop-factory-alarm;border-color:var(--bad)}
+.desktop-factory .factory-section .factory-module[data-alarm="latched"],.desktop-factory .factory-section .factory-tile[data-alarm="latched"],.desktop-factory .factory-section .factory-chip[data-state="latched"],.desktop-factory .factory-section .factory-marker[data-alarm="latched"] .factory-symbol{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 9%,var(--surface))}
+.desktop-factory .factory-section .factory-tile[data-alarm="active"] .factory-tile-state,.desktop-factory .factory-section .factory-tile[data-alarm="latched"] .factory-tile-state,.desktop-factory .factory-section .factory-chip[data-state="active"],.desktop-factory .factory-section .factory-chip[data-state="latched"]{color:var(--bad)}
+.desktop-factory .factory-selection{margin-top:12px;padding:18px 20px;border:1px solid var(--line);border-radius:10px;background:var(--surface);display:grid;gap:6px;overflow-wrap:anywhere}
+.desktop-factory .factory-selection h3{font-size:var(--font-secondary,15px);color:var(--muted);margin:0}
+.desktop-factory .factory-selected-name{font-size:18px;font-weight:600}
+.desktop-factory .factory-selection p{margin:0;font-size:var(--font-body,16px)}
+.desktop-factory .factory-selection .factory-selection-note{color:var(--muted);font-size:var(--font-secondary,15px)}
+.desktop-factory .factory-loading,.desktop-factory .factory-load-error{padding:18px 20px;margin:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:var(--font-body,16px)}
+.desktop-factory .factory-load-error{color:var(--bad)}
+.desktop-factory .desktop-factory-content>.btn{margin-top:10px}
+@keyframes desktop-factory-alarm{0%,100%{background:var(--surface);box-shadow:none}50%{background:color-mix(in srgb,var(--bad) 15%,var(--surface));box-shadow:0 0 0 2px color-mix(in srgb,var(--bad) 35%,transparent)}}
+@media(max-width:640px){.desktop-factory .factory-section .factory-toolbar,.desktop-factory .factory-section .factory-grid{padding:14px}.desktop-factory .factory-section .factory-actions{padding-inline:14px}.desktop-factory .factory-section .factory-hint{padding:12px 14px}.desktop-factory .factory-section .factory-grid{grid-template-columns:1fr}.desktop-factory .factory-section .factory-module{grid-column:1!important;grid-row:auto!important}.desktop-factory .factory-section .factory-zoom{width:100%}}
+@media(orientation:landscape) and (max-height:500px){.desktop-factory .factory-section{display:block}}
+@media(prefers-reduced-motion:reduce){.desktop-factory .factory-section .factory-module[data-alarm="active"],.desktop-factory .factory-section .factory-tile[data-alarm="active"],.desktop-factory .factory-section .factory-chip[data-state="active"],.desktop-factory .factory-section .factory-marker[data-alarm="active"] .factory-symbol{animation:none;background:color-mix(in srgb,var(--bad) 15%,var(--surface))}}

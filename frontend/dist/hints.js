@@ -2,7 +2,7 @@
 // Hint texts are German source strings (translated at show time by i18n.js); they are attached after every render
 // by selector, so the page templates in app.js stay readable. Hints work with the mouse (hover), the keyboard (focus,
 // Esc closes) and touch (tap an "i" button), and the tooltip can be hovered without disappearing (WCAG 1.4.13).
-import {translateText} from './i18n.js?v=ui-review-3';
+import {translateText} from './i18n.js?v=desktop-plan-1';
 
 const recording = el => /Stoppen/.test(el.textContent);
 const isMl = el => el?.dataset?.feedbackKind === 'ml' || /In Ordnung/.test(el.textContent);
@@ -26,7 +26,6 @@ export const HINTS = [
   ['[data-action="feedback"]', el => isMl(el.parentElement)
     ? (accepted(el) ? 'Das Signal ist normal. Die KI lernt es und meldet es nicht mehr.' : 'Das ist eine Anomalie. Die KI merkt sich das Muster und erkennt es künftig sofort.')
     : (accepted(el) ? 'Der Wert war in Ordnung. Die Auswertungsgrenzen werden erweitert.' : 'Der Wert war ein Fehler. Die Auswertungsgrenzen bleiben unverändert.')],
-  ['.ml-chip', 'Die KI lernt zuerst den Normalzustand (etwa 10 Sekunden) und meldet danach Abweichungen. Parameter: Einstellungen.'],
   ['form[data-form="marker"] button[type="submit"]', 'Markiert diesen Zeitpunkt im Diagramm und in der Aufnahme.'],
   ['[data-action="sensor"].text-button', 'Öffnet die große 3D-Ansicht mit dem Sensorstatus.'],
   ['[data-action="connect-sensor"]', 'Verbindet den gewählten Sensor. Schließe vorher sensorTOOL und andere Programme.'],

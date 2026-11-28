@@ -4,6 +4,7 @@ import settingsCopy from './locales/settings-copy.js?v=ui-review-3';
 import mobileCopy from './locales/mobile-copy.js?v=ui-review-3';
 import coverageCopy from './locales/coverage-copy.js?v=ui-review-3';
 import recordingsCopy from './locales/recordings-copy.js?v=recordings-1';
+import {factorySourceCopy} from './factory-copy.js?v=building-plan-1';
 
 // Shared with the presentation page, so following either link retains the chosen language.
 const STORAGE_KEY = 'landing-lang';
@@ -32,7 +33,7 @@ const storedLanguage = () => {
   } catch { return 'de'; }
 };
 let language = storedLanguage();
-export const revisionMessages = code => ({...cockpitCopy[code], ...settingsCopy[code], ...mobileCopy[code], ...coverageCopy[code], ...recordingsCopy[code]});
+export const revisionMessages = code => ({...cockpitCopy[code], ...settingsCopy[code], ...mobileCopy[code], ...coverageCopy[code], ...recordingsCopy[code], ...factorySourceCopy[code]});
 const dictionaries = new Map([['en', {...english, ...revisionMessages('en')}]]);
 const loading = new Map();
 const compiled = new Map();

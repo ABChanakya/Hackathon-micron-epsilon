@@ -2,6 +2,61 @@
 
 Live-Messplatz für den optoNCDT 1900-10 und thermoMETER UC mit Diagramm, Aufzeichnung und CSV-/PDF-Export. Die Anzeige und Messprofile wechseln passend zum Sensor zwischen mm und °C; gespeicherte Aufzeichnungen behalten ihre Einheit.
 
+![Sensor Cockpit mit dem ILD1900: Messwert, Toleranzband, 3D-Sensor und Messverlauf](docs/images/monitor-light.png)
+
+## In Bildern
+
+### Sensor Cockpit
+
+Messwert, Sollbereich, Verlauf, 3D-Modell des Sensors mit seinen LEDs, Aufnahme und Notizen auf einer Seite. Hell und
+dunkel, in zehn Sprachen. Die Screenshots zeigen die Wiedergabe echter ILD1900-Aufnahmen.
+
+| Hell | Dunkel |
+|---|---|
+| ![Sensor Cockpit, helles Farbschema](docs/images/monitor-light.png) | ![Sensor Cockpit, dunkles Farbschema](docs/images/monitor-dark.png) |
+
+### Gebäudeplan mit Modulen und Alarmen
+
+Herausgezoomt der Plan der Halle, hineingezoomt eine Kachel je Station, in ihrer Lage auf dem Plan. Ein Modul im Alarm
+blinkt rot und landet mit Ton in „Erkannte Fehler“; nach dem Ausschlag bleibt es markiert, bis jemand quittiert. Ein
+angeschlossener Sensor speist das Modul mit **LIVE**-Markierung, die übrigen sind simuliert.
+
+![Gebäudeplan im hellen Farbschema](docs/images/factory-plan.png)
+![Modulansicht: Messkopf A der Materialbereitstellung im Alarm, 25,413 mm über der Grenze von 25,050 mm](docs/images/factory-modules-alarm.png)
+
+### Saalansicht für Beamer
+
+Das **Aa** oben rechts (oder Einstellungen → Anzeige → Schriftgröße) vergrößert die ganze Oberfläche um das 1,5-Fache,
+damit sie auch aus der letzten Reihe lesbar ist. Diagramme bleiben scharf, die Wahl wird im Browser gespeichert.
+
+![Saalansicht auf 1920 × 1080: große Schrift, großer Messwert](docs/images/hall-view.png)
+
+### Handy-Ansicht
+
+Unter `/handy/`, im gleichen WLAN auch auf dem Handy (siehe [Handy-Ansicht](#gerätecheck-und-handy-ansicht)). Mit
+angeschlossenem Sensor öffnet sie direkt die Live-Daten.
+
+| Hell | Gebäudeplan | Dunkel |
+|---|---|---|
+| ![Handy-Ansicht hell](docs/images/phone-light.png) | ![Gebäudeplan auf dem Handy](docs/images/phone-factory.png) | ![Handy-Ansicht dunkel](docs/images/phone-dark.png) |
+
+### Aufzeichnungen und Einstellungen
+
+| Aufzeichnungen | Einstellungen |
+|---|---|
+| ![Liste der Aufzeichnungen mit Auswertung](docs/images/recordings.png) | ![Einstellungen: Anzeige, Verbindung, Messprofil, KI](docs/images/settings.png) |
+
+### Video: Lasermodul tauschen (schematisch)
+
+Eine 31 Sekunden lange Animation am 3D-Modell des ILD1900: Spannung trennen, vier Deckelschrauben lösen, Deckel
+abheben, Flexkabel lösen, zwei Modulschrauben lösen, Lasermodul entnehmen. Im Cockpit öffnet „Video“ an der
+Sensorkarte dieselbe Datei. Das Innere ist erfunden: Der echte ILD1900 ist ein geschlossenes Gerät, das Video ist
+**keine offizielle Reparaturanleitung**.
+
+[![Vorschau der Animation: Schrauben werden gelöst, der Deckel abgehoben und das Lasermodul markiert](docs/images/teardown-preview.gif)](frontend/dist/assets/videos/ILD1900-teardown.mp4)
+
+[Video ansehen (MP4, 1080p, 60 fps, 11 MB)](frontend/dist/assets/videos/ILD1900-teardown.mp4)
+
 ## Start
 
 Python 3.10 oder neuer muss installiert sein. Im Repository:
@@ -55,7 +110,9 @@ Der Messplatz (unter dem Messbereich) und die Handy-Ansicht zeigen einen fiktive
 Hallenplan, hineingezoomt eine Kachel je Station in ihrer Lage auf dem Plan. Ein angeschlossener echter Sensor speist ein
 Modul (ILD1900: Qualitätskontrolle · Messkopf A, thermoMETER: Mechanische Bearbeitung, mit **LIVE** markiert); dessen Alarm
 kommt von der KI oder einem ungültigen Messwert. Die übrigen Module sind simuliert; **Fehler simulieren** lässt einen davon
-ausschlagen. Module im Alarm blinken rot, bis sie quittiert sind. Code: `frontend/Handy frontend/fabrikplan/`.
+ausschlagen. Module im Alarm blinken rot, bis sie quittiert sind. Alarme der simulierten Module erscheinen im Cockpit
+unter „Erkannte Fehler“ (mit Alarmton). Der Plan folgt dem hellen oder dunklen Farbschema. Code:
+`frontend/Handy frontend/fabrikplan/` (Plan, Module, Live-Modul), `frontend/dist/factory-plan.js` (Einbindung ins Cockpit).
 
 ## KI-Anomalieerkennung
 
