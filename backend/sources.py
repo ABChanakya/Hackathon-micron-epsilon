@@ -647,8 +647,12 @@ class ThermoSource:
 
 
 def serial_ports():
-    """USB serial ports that may have a sensor on them (macOS and Linux names)."""
-    import glob
+    """USB serial ports that may have a sensor on them: /dev/cu.usbserial* (macOS), /dev/ttyUSB* (Linux), COM ports
+    (Windows, from pySerial's port list)."""
+    import glob, sys
+    if sys.platform.startswith("win"):
+        from serial.tools import list_ports
+        return sorted((p.device for p in list_ports.comports()), key=lambda name: (len(name), name))
     return sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*"))
 
 

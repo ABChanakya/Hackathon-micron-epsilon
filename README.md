@@ -57,19 +57,104 @@ Sensorkarte dieselbe Datei. Das Innere ist erfunden: Der echte ILD1900 ist ein g
 
 [Video ansehen (MP4, 1080p, 60 fps, 11 MB)](frontend/dist/assets/videos/ILD1900-teardown.mp4)
 
-## Start
+## Installation
 
-Python 3.10 oder neuer muss installiert sein. Im Repository:
+### Was du brauchst
+
+| | Pflicht? | Wofür |
+|---|---|---|
+| **Python 3.10 oder neuer** | ja | Messserver. Prüfen mit `python3 --version` (Windows: `py --version`) |
+| Internet beim ersten Start | ja, einmal | lädt die Python-Pakete (FastAPI, Uvicorn, pySerial, httpx) |
+| Webbrowser | ja | Chrome, Edge, Firefox oder Safari in aktueller Version |
+| Sensor mit USB-Wandler | nein | ohne Sensor laufen Demo und die mitgelieferten Aufnahmen |
+| Git | nein | nur zum Herunterladen und Aktualisieren per `git` |
+| Node.js 20 oder neuer | nein | nur für die automatischen Tests |
+| Ollama | nein | nur für den lokalen Sprachassistenten ([unten](#lokaler-sprachassistent)) |
+
+Python installieren, falls `python3 --version` nichts oder eine ältere Version meldet:
+- **macOS:** Installer von [python.org/downloads](https://www.python.org/downloads/) oder `brew install python`.
+- **Windows:** Installer von [python.org/downloads](https://www.python.org/downloads/); im ersten Fenster
+  **„Add python.exe to PATH“** anhaken.
+- **Linux (Debian, Ubuntu):** `sudo apt install python3 python3-venv`.
+
+### 1. Programm herunterladen
+
+Mit Git:
+
+```sh
+git clone https://github.com/ABChanakya/hackathon-micron-epsilon.git
+cd hackathon-micron-epsilon
+```
+
+Ohne Git: auf GitHub **Code → Download ZIP**, entpacken und im Terminal in den entpackten Ordner wechseln.
+
+### 2. Starten
+
+**macOS und Linux** (Terminal, im Programmordner):
 
 ```sh
 ./start.sh
 ```
 
-Der erste Start installiert die Python-Abhängigkeiten in `backend/.venv`.
-Öffne anschließend **http://127.0.0.1:8000/** und klicke auf **Sensor verbinden**.
-Der Anschluss wird automatisch gefunden; bei mehreren USB-Geräten wählst du Anschluss und Sensortyp aus.
-Schließe vorher sensorTOOL oder andere Programme, die denselben Sensor verwenden.
+**Windows** (Doppelklick auf `start.bat` oder in der Eingabeaufforderung im Programmordner):
+
+```bat
+start.bat
+```
+
+Der erste Start dauert etwa eine Minute: Das Skript legt die Python-Umgebung in `backend/.venv` an und installiert die
+Pakete dorthin; am übrigen System ändert es nichts. Jeder weitere Start geht in Sekunden. Erscheint
+`Micro-Epsilon Live-Monitor: http://127.0.0.1:8000/`, läuft der Messserver. Das Fenster bleibt offen, solange du
+misst; **Strg+C** beendet ihn.
+
+### 3. Öffnen und Sensor verbinden
+
+1. Öffne **http://127.0.0.1:8000/** im Browser.
+2. Schließe sensorTOOL und andere Programme, die denselben Sensor verwenden.
+3. Stecke den Sensor per USB-Wandler an und klicke auf **Sensor verbinden**. Der Anschluss wird automatisch
+   gefunden; bei mehreren USB-Geräten wählst du Anschluss und Sensortyp aus. Unter Windows heißt er `COM3` o. Ä.;
+   welcher es ist, zeigt der Geräte-Manager unter „Anschlüsse (COM & LPT)“.
+4. Ohne Sensor: unter **Datenquelle** die Demo oder **Echte Aufnahmen abspielen** wählen.
+
 Eine bereits aktive Backend-Verbindung wird beim Öffnen sofort angezeigt.
+
+### Handy verbinden (optional)
+
+Handy und Rechner müssen im selben Netz sein, im WLAN oder über den Hotspot des Handys, mit dem sich der Rechner
+verbindet. Während der Messserver läuft, in einem zweiten Terminal:
+
+```sh
+python3 "frontend/Handy frontend/serve.py"
+```
+
+Dann auf dem Handy `http://<IP-Adresse des Rechners>:4174/` öffnen. Die IP-Adresse zeigt `ipconfig getifaddr en0`
+(macOS), `hostname -I` (Linux) oder `ipconfig` beim WLAN-Adapter (Windows). Fragt die Firewall, ob Python
+Verbindungen annehmen darf, erlaube es für private Netze. Das Handy kann nur lesen: Der Handy-Server gibt nur
+Messwerte und Gerätestatus weiter, keine Einstellungen.
+
+### Aktualisieren und Entfernen
+
+- **Aktualisieren:** `git pull` (oder neues ZIP), dann wie gewohnt starten; neue Pakete werden dabei installiert.
+  Im Browser einmal **Strg+Shift+R** (macOS: **Cmd+Shift+R**), damit er die neuen Dateien lädt.
+- **Entfernen:** den Programmordner löschen. Python-Pakete, Aufnahmen (`backend/recordings/`) und Gelerntes der KI
+  (`backend/ml/`) liegen alle darin; sichere sie vorher, wenn du sie behalten willst.
+
+### Wenn etwas nicht klappt
+
+| Problem | Lösung |
+|---|---|
+| `python3: command not found` oder `py` unbekannt | Python installieren (siehe oben), Terminal neu öffnen |
+| `./start.sh: Permission denied` | `sh start.sh` verwenden oder einmal `chmod +x start.sh` |
+| `ensurepip is not available` (Linux) | `sudo apt install python3-venv`, dann den Ordner `backend/.venv` löschen und neu starten |
+| `address already in use` / Port 8000 belegt | läuft der Messserver schon in einem anderen Fenster? Sonst `./start.sh --port 8001` und http://127.0.0.1:8001/ öffnen |
+| Sensor wird nicht gefunden | USB-Kabel prüfen, sensorTOOL schließen, anderen USB-Anschluss versuchen; unter macOS zeigt `ls /dev/cu.usbserial*` den Wandler |
+| Linux: „Permission denied“ am Anschluss | `sudo usermod -aG dialout $USER`, abmelden und wieder anmelden |
+| „Datenquelle getrennt · Device not configured“ | das USB-Kabel war kurz weg; einstecken und **Erneut verbinden** |
+| Handy erreicht den Rechner nicht | gleiches Netz? Gäste- und Uni-WLANs (eduroam) trennen Geräte oft voneinander; dann den Handy-Hotspot nutzen |
+| Seite sieht nach einem Update alt aus | **Strg+Shift+R** bzw. **Cmd+Shift+R** |
+
+Getestet ist der Messplatz unter macOS mit echten Sensoren. Linux und Windows (`start.bat`) folgen denselben Schritten,
+sind mit angeschlossenem Sensor aber nicht geprüft.
 
 Das Dashboard verwendet standardmäßig echte Sensordaten. Ohne Messserver oder Sensor
 zeigt es den Verbindungsstatus; die Demo lässt sich über die Datenquellenauswahl aktivieren.
