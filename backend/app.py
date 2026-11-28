@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import anomaly
 import hub as hubmod
 from sources import probe_port, serial_ports
 
@@ -225,6 +226,74 @@ def delete_recording(name: str):
     if os.path.isfile(p[:-4] + ".json"):
         os.remove(p[:-4] + ".json")
     return {"deleted": os.path.basename(p)}
+
+
+class LabelReq(BaseModel):
+    label: str                     # normal ("in Ordnung") | anomaly ("nicht in Ordnung")
+    note: str = ""
+
+
+@app.get("/api/ml")
+def ml_status():
+    """Anomaly agent: state, config, learned baseline, label counts, error file."""
+    return hub.ml.status()
+
+
+@app.get("/api/ml/config")
+def ml_get_config():
+    return hub.ml.status()["config"]
+
+
+@app.put("/api/ml/config")
+@app.post("/api/ml/config")
+async def ml_set_config(body: dict):
+    return await _do("_ml_config", body)
+
+
+@app.get("/api/ml/events")
+def ml_events(status: str | None = None, limit: int = 50):
+    """Flagged and error events, newest first. status: pending | normal | anomaly | error."""
+    return hub.ml.list_events(status, min(max(limit, 1), 200))
+
+
+@app.post("/api/ml/events/{event_id}/label")
+async def ml_label(event_id: str, r: LabelReq):
+    return await _do("_ml_label", event_id, r.label, r.note)
+
+
+@app.post("/api/ml/reset")
+async def ml_reset(body: dict | None = None):
+    """Forget the learned baseline and learn again from the next seconds. keep_labels (default true) keeps the human labels."""
+    return await _do("_ml_reset", bool((body or {}).get("keep_labels", True)))
+
+
+@app.post("/api/ml/learn")
+async def ml_learn(body: dict):
+    """Learn a recording as normal: {"file": "rec_....csv"}. The recording must come from the connected sensor."""
+    path = _rec_path(body.get("file", ""))
+    if not path.endswith(".csv"):
+        raise HTTPException(400, "file must be a recording .csv")
+    meta = {}
+    try:
+        with open(path[:-4] + ".json") as fh:
+            meta = json.load(fh)
+    except (OSError, ValueError):
+        pass
+    feats = await asyncio.to_thread(anomaly.features_from_csv, path, hub.ml.cfg["window_s"])
+    if not feats:
+        raise HTTPException(400, "the recording has no usable windows")
+    return await _do("_ml_learn", meta.get("info") or {}, feats)
+
+
+@app.get("/api/ml/errors")
+def ml_errors(limit: int = 50):
+    """The last lines of the error file (errors are discarded from learning and written there)."""
+    try:
+        with open(hub.ml.error_path()) as fh:
+            lines = fh.readlines()[-min(max(limit, 1), 500):]
+    except OSError:
+        return []
+    return [json.loads(x) for x in reversed(lines) if x.strip()]
 
 
 @app.websocket("/ws/stream")

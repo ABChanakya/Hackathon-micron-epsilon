@@ -1,0 +1,114 @@
+import json, os, random, sys, tempfile, unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import anomaly  # noqa: E402
+
+RATE = 1000          # samples/s
+INFO = {"model": "TEST-10", "unit": "mm", "serial": "1"}
+
+
+class Feeder:
+    def __init__(self, agent):
+        self.agent, self.t, self.rng = agent, 0.0, random.Random(7)
+
+    def run(self, seconds, level=5.0, noise=0.002, invalid=False, dropped=0):
+        for _ in range(int(seconds * RATE)):
+            self.t += 1 / RATE
+            v = None if invalid else level + self.rng.gauss(0, noise)
+            self.agent.feed(self.t, v, {}, dropped, 1.8e9)
+
+
+class AnomalyAgentTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        cfg = {**anomaly.DEFAULTS, "error_file": os.path.join(self.dir, "errors.jsonl"), "warmup_s": 5.0,
+               "cooldown_s": 0.0}
+        self.agent = anomaly.AnomalyAgent(self.dir, cfg)
+        self.agent.start(INFO, "sim")
+        self.feed = Feeder(self.agent)
+
+    def pending(self):
+        return [e for e in self.agent.events if e["status"] == "pending"]
+
+    def test_learns_then_stays_quiet_on_normal_signal(self):
+        self.feed.run(5.5)
+        self.assertTrue(self.agent._ready())
+        self.feed.run(20)
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.agent.frame()["state"], "watching")
+
+    def test_noise_burst_is_flagged_and_fine_label_absorbs_it(self):
+        self.feed.run(6)
+        self.feed.run(2, noise=0.05)                 # 25x the normal noise
+        ev = self.pending()
+        self.assertEqual(len(ev), 1)
+        self.assertIn(ev[0]["reason"], ("std", "p2p", "jitter"))
+        self.agent.label(ev[0]["id"], "normal", "rough surface, fine")
+        self.feed.run(1)
+        self.feed.run(2, noise=0.05)                 # the same pattern again: a person said it is fine
+        self.assertEqual(self.pending(), [])
+
+    def test_not_fine_label_marks_later_similar_windows_as_known_anomaly(self):
+        self.feed.run(6)
+        self.feed.run(2, level=5.5)                  # level step of 0.5 mm
+        ev = self.pending()[0]
+        self.assertEqual(ev["reason"], "mean")
+        self.agent.label(ev["id"], "anomaly", "part missing")
+        self.feed.run(2)
+        self.feed.run(2, level=5.5)
+        known = [e for e in self.agent.events if e.get("known")]
+        self.assertTrue(known)
+        self.assertEqual(known[-1]["status"], "anomaly")
+        self.assertEqual(known[-1]["label_note"], "part missing")
+
+    def test_error_codes_go_to_the_error_file_and_are_never_learned(self):
+        self.feed.run(6)
+        self.feed.run(2, invalid=True)
+        self.feed.run(1)                              # signal back: the error event is closed and written
+        self.assertTrue(all(b["err_frac"] < 0.5 for b in self.agent.baseline))
+        with open(self.agent.error_path()) as fh:
+            lines = [json.loads(x) for x in fh]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]["reason"], "invalid_samples")
+        self.assertEqual(lines[0]["sensor"], "TEST-10")
+        self.assertEqual(self.pending(), [])
+        with self.assertRaises(ValueError):
+            self.agent.label(lines[0]["id"], "normal")
+
+    def test_a_few_lost_samples_are_not_an_error_but_many_are(self):
+        self.feed.run(6)
+        self.feed.run(0.5, dropped=1)
+        self.feed.run(1, dropped=1)
+        self.assertFalse([e for e in self.agent.events if e["status"] == "error"])
+        self.feed.run(0.5, dropped=5000)
+        self.feed.run(1, dropped=5000)
+        self.assertEqual([e["reason"] for e in self.agent.events if e["status"] == "error"], ["dropped_samples"])
+
+    def test_hard_limit_is_an_error(self):
+        self.agent.set_config({"hard_max": 5.2})
+        self.feed.run(6)
+        self.feed.run(1, level=5.4)
+        self.feed.run(1)
+        errs = [e for e in self.agent.events if e["status"] == "error"]
+        self.assertEqual(errs[0]["reason"], "hard_limit")
+
+    def test_model_survives_reconnect(self):
+        self.feed.run(6)
+        self.agent.stop()
+        again = anomaly.AnomalyAgent(self.dir, self.agent.cfg)
+        again.start(INFO, "sim")
+        self.assertTrue(again._ready())
+        self.assertEqual(again.frame()["state"], "watching")
+
+    def test_config_validation(self):
+        with self.assertRaises(ValueError):
+            self.agent.set_config({"sensitivity": 0})
+        with self.assertRaises(ValueError):
+            self.agent.set_config({"nope": 1})
+        with self.assertRaises(ValueError):
+            self.agent.set_config({"error_file": "x.txt"})
+        self.assertEqual(self.agent.set_config({"sensitivity": 8})["sensitivity"], 8.0)
+
+
+if __name__ == "__main__":
+    unittest.main()

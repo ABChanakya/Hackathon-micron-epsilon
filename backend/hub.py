@@ -4,6 +4,7 @@ from collections import deque
 from concurrent.futures import Future
 from datetime import datetime
 
+from anomaly import AnomalyAgent
 from sources import ERR_BASE, MedaqSource, ReplaySource, SerialSource, SimSource, ThermoSource, probe_port, serial_ports
 
 REC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
@@ -60,6 +61,7 @@ class Hub:
         self.rec_count = 0
         self.rec_until = None
         self.tare = None
+        self.ml = AnomalyAgent()           # anomaly agent: learns normal, flags the rest (anomaly.py)
         self._reset_counters()
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -120,11 +122,13 @@ class Hub:
         self.cfg, self.status, self.error = cfg, "streaming", ""
         self.buf.clear(); self.win.clear(); self.tare = None
         self._reset_counters()
+        self.ml.start(self.src.info, self.src.kind)
         return self.state()
 
     def _disconnect(self):
         self._stop_rec()
         if self.src:
+            self.ml.stop()
             try:
                 self.src.close()
             except Exception:
@@ -149,7 +153,9 @@ class Hub:
         if not self.src or not hasattr(self.src, "apply"):
             raise RuntimeError("not connected or settings not supported for this source")
         try:
-            return self.src.apply(body)
+            out = self.src.apply(body)
+            self.ml.reset(keep_labels=True)      # new sensor settings change the noise: learn the baseline again
+            return out
         finally:
             self.win.clear(); self.last_counter = None     # also when the sensor rejected the change
 
@@ -170,6 +176,25 @@ class Hub:
         t_end = self.buf[-1][0]
         off = self.tare or 0.0
         return bucketize(((t, v - off) for t, v in self.buf if t >= t_end - seconds), t_end - seconds, t_end, bins)
+
+    # ---- anomaly agent (mutations run on this thread, like the sensor) -------------------
+    def _ml_label(self, event_id, label, note):
+        return self.ml.label(event_id, label, note)
+
+    def _ml_reset(self, keep_labels):
+        self.ml.reset(keep_labels)
+        return self.ml.status()
+
+    def _ml_config(self, body):
+        return self.ml.set_config(body)
+
+    def _ml_learn(self, info, feats):
+        def same(a, b):                    # "ILD1900" (older recordings) matches "ILD1900-10"
+            a, b = str(a.get("model") or ""), str(b.get("model") or "")
+            return bool(a) and (a == b or a.startswith(b + "-") or b.startswith(a + "-"))
+        if not self.ml.key or not same(info, self.ml.info) or info.get("unit", "mm") != self.ml.unit:
+            raise RuntimeError("connect the sensor this recording was made with first")
+        return {"learned_windows": self.ml.learn_windows(feats), **self.ml.status()}
 
     # ---- recording --------------------------------------------------------------------
     def _start_rec(self, label="", notes="", duration_s=None):
@@ -275,10 +300,12 @@ class Hub:
                         code = int(round(ERR_BASE - v)); self.err_total += 1
                         self.last_err = {"code": code, "text": ERR_NAMES.get(code, "unknown error")}
                         self.win.append((t, None))
+                        self.ml.feed(t, None, s, self.dropped_total, self.wall_off)
                         if self.rec:
                             self._record(t, s, None, code)
                         continue
                     self.buf.append((t, v)); self.win.append((t, v))
+                    self.ml.feed(t, v, s, self.dropped_total, self.wall_off)
                     if self.rec:
                         self._record(t, s, v, None)
                 self.latest = samples[-1]
@@ -316,7 +343,8 @@ class Hub:
                          "current_valid": lt.get("dist", ERR_BASE) > -1e9,
                          "unit": (getattr(self.src, "info", {}) or {}).get("unit", "mm"),
                          "raw_value": last_valid,                       # latest valid reading, tare NOT applied
-                         "head_c": lt.get("head_c"), "electronics_c": lt.get("electronics_c")}
+                         "head_c": lt.get("head_c"), "electronics_c": lt.get("electronics_c"),
+                         "ml": self.ml.frame()}
                 self.int_sum, self.int_n = 0.0, 0
                 self.last_frame = frame
                 if self.loop and (self.clients or self.bridge_clients):
@@ -343,7 +371,7 @@ class Hub:
                 "serial": info.get("serial"), "range_start": smr, "range_end": None if smr is None or rng is None else smr + rng,
                 "range": rng, "rate_hz": f.get("rate_hz"), "intensity": f.get("intensity"),
                 "error": None if valid else (f.get("last_error") or {}).get("text") or "no valid reading",
-                "dropped_total": f.get("dropped_total"), "t": f.get("t")}
+                "dropped_total": f.get("dropped_total"), "t": f.get("t"), "ml": f.get("ml")}
 
     def _broadcast(self, frame, bridge_msg):
         for ws in list(self.clients):

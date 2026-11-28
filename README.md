@@ -38,6 +38,19 @@ Die neue Präsentationsseite erreichst du unter http://127.0.0.1:8000/pitch/.
 Welcher Sensor an welchem USB-Anschluss hängt, beantwortet `GET /api/sensors/scan?probe=true`; jeder Anschluss wird
 dabei nur lesend gefragt. `POST /api/connect` mit `{"sensor":"AUTO"}` verbindet den ersten Sensor, der antwortet.
 
+## KI-Anomalieerkennung
+
+Der Messserver lernt nach dem Verbinden etwa 10 s lang, wie das Signal des Sensors normal aussieht (oder aus einer
+Aufnahme: Einstellungen → „Aufnahme als Normalzustand lernen“). Weicht das Signal danach ab, erscheint auf dem
+Messplatz eine KI-Auffälligkeit mit Grund, z. B. „Messwert verschoben“ oder „Rauschen erhöht“:
+- **In Ordnung**: Das Muster gilt als normal und wird nicht mehr gemeldet.
+- **Nicht in Ordnung**: Das Muster gilt als Anomalie und wird künftig direkt als bekannte Anomalie erkannt.
+- **Fehler** (zu viele ungültige oder verlorene Messwerte, Wert außerhalb der eingestellten Grenzen) werden verworfen,
+  nie gelernt und als JSON-Zeile in `backend/ml/errors.jsonl` geschrieben, damit andere Programme sie weiterverarbeiten.
+
+Alle Parameter (Meldeschwelle, Zeitfenster, Lernphase, Grenzen, Fehlerdatei …) stehen unter **Einstellungen →
+KI-Anomalieerkennung**. Das Gelernte bleibt pro Sensor in `backend/ml/` gespeichert. Details: [API](backend/API.md#anomaly-agent-anomalypy).
+
 ## Aufbau
 
 ```mermaid
@@ -47,13 +60,14 @@ flowchart LR
   B[Backend<br/>FastAPI, Port 8000] -- /ws/stream + /api --> M[Monitor<br/>frontend/dist]
   B -- /ws/bridge --> L[Präsentationsseite<br/>/pitch/]
   B -- CSV + JSON --> R[(backend/recordings)]
+  B -- Fehler als JSONL --> E[(backend/ml/errors.jsonl)]
   R -- Wiedergabe --> B
   D[(727 Handbücher + MEDAQLib)] --> Q[rag/ Suche]
 ```
 
 | Ordner | Inhalt |
 |---|---|
-| `backend/` | Messserver: API, Sensortreiber (`sources.py`), Aufzeichnungen, `record_materials.py` für geführte Materialaufnahmen ([Backend](backend/README.md), [API](backend/API.md)) |
+| `backend/` | Messserver: API, Sensortreiber (`sources.py`), KI-Anomalieerkennung (`anomaly.py`), Aufzeichnungen, `record_materials.py` für geführte Materialaufnahmen ([Backend](backend/README.md), [API](backend/API.md)) |
 | `frontend/` | Monitor (Messplatz), wird von `dist/` unverändert ausgeliefert ([Frontend](frontend/README.md)) |
 | `scrollcraft/builds/landing/` | Präsentationsseite für den Pitch, zehn Sprachen ([README](scrollcraft/builds/landing/README.md)) |
 | `backend/recordings/` | Beispielaufnahmen des ILD1900 (sechs Materialien) zum Abspielen ohne Hardware |

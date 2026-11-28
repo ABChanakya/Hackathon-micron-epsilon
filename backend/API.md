@@ -57,6 +57,13 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 | `DELETE /api/recordings/{file}` | – | `{deleted}` | Delete the CSV and its sidecar. 409 while it is being recorded |
 | `POST /api/command` | `{cmd, params?}` | `{answer}` | Raw sensor command (advanced) |
 | `POST /api/config` | `{"rate_khz": 2}` | `{answer}` | Older shortcut for the rate; prefer `/api/settings` |
+| `GET /api/ml` | – | ML status | Anomaly agent: state, config, learned baseline, label counts, error file (see "Anomaly agent") |
+| `GET` / `PUT /api/ml/config` | any subset of the config | config | Read or change the agent's parameters (saved in `backend/ml/config.json`) |
+| `GET /api/ml/events?status=pending&limit=50` | – | `[event]` | Flagged and error events, newest first. `status`: `pending`, `normal`, `anomaly`, `error` |
+| `POST /api/ml/events/{id}/label` | `{"label": "normal" \| "anomaly", "note"?}` | event | A person's answer to a flag |
+| `POST /api/ml/reset` | `{"keep_labels": true}` | ML status | Learn the normal state again from the next seconds |
+| `POST /api/ml/learn` | `{"file": "rec_….csv"}` | ML status | Learn a recording of the connected sensor as normal |
+| `GET /api/ml/errors?limit=50` | – | `[error]` | The last lines of the error file, newest first |
 
 ### `POST /api/connect`
 | Field | Example | Notes |
@@ -120,7 +127,9 @@ Server → client only, about 25 frames/s while streaming:
   "state_flags": {"peak_before_roi": false, "peak_after_roi": false, "no_peak": true,
                   "before_smr": false, "after_emr": true, "triggered": false, "led": "red"},
   "dropped_total": 0,
-  "rate_hz": 1997, "status": "streaming", "recording": true, "rec_samples": 2883
+  "rate_hz": 1997, "status": "streaming", "recording": true, "rec_samples": 2883,
+  "ml": {"enabled": true, "state": "watching", "score": 1.4, "sensitivity": 6, "reason": null, "progress": 1.0,
+         "pending": null, "pending_count": 0, "known": null, "errors_written": 0}   // see "Anomaly agent"
 }
 ```
 - Any field can be `null`. The extra fields are null when their channel is off.
@@ -129,6 +138,63 @@ Server → client only, about 25 frames/s while streaming:
 - `state_flags.led` mirrors the LED on the sensor: green = target in range, yellow = mid range, red = error, off = laser off.
 - `last_error.code`: 3 too much data for baudrate, 4 no peak, 5 peak before range, 6 peak after range, 7 cannot be calculated,
   8 global error, 9 peak too wide, 10 laser off.
+
+## Anomaly agent (`anomaly.py`)
+Learns what the connected sensor's signal normally looks like and flags what does not. It runs in the sensor thread
+on every raw sample (not the 25 fps frames), for every source: sensor, simulator, replay.
+
+**How it decides.** The samples are cut into windows (`window_s`, default 0.5 s). Per window it computes
+`mean`, `std`, `p2p` (peak-to-peak), `slope` (|trend| per s), `jitter` (std of sample-to-sample steps), `err_frac`
+(share of invalid samples) and `intensity` (optical sensors). The model is a robust baseline per sensor model: median
+and spread (MAD) of each feature over the windows learned as normal. A window's `score` is its largest deviation in
+spreads (robust z). Shifts of `mean` and `intensity` count both ways; noise-type features only upwards.
+
+**Three outcomes per window:**
+| Class | When | What happens |
+|---|---|---|
+| normal | score below `sensitivity` | Learned into the baseline (in the warm-up, and afterwards with `learn_online`) |
+| flagged | score ≥ `sensitivity` for `consecutive` windows | A `pending` event. A person answers it: `normal` puts it into the normal set (later windows like it are not flagged), `anomaly` into the anomaly set (later windows like it become `anomaly` events with `known: true`, without asking) |
+| error | invalid or lost samples ≥ `error_fraction` of the window, a value beyond `hard_min`/`hard_max`, or score ≥ `reject_z` | Discarded: never learned, and written to `error_file` |
+
+After connecting, the agent learns for `warmup_s` seconds before it flags anything, unless it already has a model for
+this sensor (models are saved in `backend/ml/model_<sensor>.json` and loaded on the next connect). Changing sensor
+settings through `/api/settings` starts the learning again (human labels are kept).
+
+**Config** (`PUT /api/ml/config`, also in the monitor under Einstellungen → KI-Anomalieerkennung):
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Agent on/off |
+| `window_s` | `0.5` | Window length in s (changing it starts learning again) |
+| `warmup_s` | `10` | Seconds of signal learned as normal after connecting |
+| `sensitivity` | `6` | Score from which a window is unusual (lower = more sensitive) |
+| `consecutive` | `2` | Unusual windows in a row before a flag |
+| `cooldown_s` | `5` | Quiet time after a flag |
+| `match_radius` | `3` | How close a window must be to a labelled example to count as "like it" |
+| `learn_online` | `true` | Keep learning normal windows while watching (follows slow drift) |
+| `error_fraction` | `0.5` | Share of invalid or lost samples from which a window is an error |
+| `reject_z` | `null` | Score from which a window is an error instead of a flag (`null` = off) |
+| `hard_min`, `hard_max` | `null` | Limits as shown in the monitor (mm from the sensor face, or °C). Beyond them = error |
+| `error_file` | `ml/errors.jsonl` | Where errors go, relative to `backend/` or absolute, must end in `.jsonl` |
+
+**Event** (`/api/ml/events`, `ml.pending` in frames):
+```json
+{"id": "ml-1795826080656", "status": "pending", "known": false, "reason": "mean", "score": 175.2,
+ "value": 26.125, "unit": "mm", "t_start": "2026-11-28T02:40:31.515", "t_end": "2026-11-28T02:40:32.515",
+ "windows": 2, "z": {"mean": 175.2, "std": 2.1}, "features": {"mean": 6.125, "std": 0.003},
+ "sensor": "ILD1900-10", "serial": "…", "source": "replay", "replay_of": "rec_20261127_203446.csv", "label_note": ""}
+```
+`value` is in the monitor's unit (mm from the sensor face, or °C); `features` are in the sensor's own scale.
+`reason` is the feature that deviates most. Labels are also appended to `backend/ml/labels.jsonl`.
+
+**Error file** (`error_file`, one JSON object per line, appended; a long error is split into lines of at most 5 s):
+```json
+{"type": "error", "status": "error", "id": "err-1795826094000-0", "reason": "invalid_samples",
+ "t_start": "2026-11-28T02:41:00.010", "t_end": "2026-11-28T02:41:03.010", "windows": 6, "dropped": 0,
+ "worst_value": null, "unit": "mm", "score": null, "features": {"err_frac": 1.0}, "z": {},
+ "sensor": "ILD1420-50", "serial": "…", "source": "replay", "replay_of": "rec_20261127_184513.csv"}
+```
+`reason`: `invalid_samples` (sensor error codes, e.g. no target), `dropped_samples` (samples lost on the way),
+`hard_limit` (`worst_value` = the first value beyond the limit), `extreme_score`.
 
 ## Thermometer (`thermo`, thermoMETER UC over ME-Bus)
 Connect: `{"sensor": "thermo", "port": "/dev/cu.usbserial-FTA3RQ8E"}` (optional `"address": 126`, `"baudrate": 115200`).

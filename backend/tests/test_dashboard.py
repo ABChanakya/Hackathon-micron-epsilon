@@ -1,10 +1,13 @@
 """In-process checks: no network listener or real sensor is opened."""
+import os
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+os.environ.setdefault("SENSOR_ML_DIR", tempfile.mkdtemp())   # the hub's anomaly agent must not write into backend/ml
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

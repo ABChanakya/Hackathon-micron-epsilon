@@ -65,6 +65,13 @@ curl -X POST localhost:8000/api/record/start -H 'content-type: application/json'
 Recordings are in `recordings/` (CSV plus a `.json` with label and stats). Play one back without the sensor:
 `{"sensor":"REPLAY","file":"rec_….csv"}` on `/api/connect`.
 
+## Anomaly agent
+`anomaly.py` learns how the connected sensor's signal normally looks (the first 10 s after connecting, or a recording
+via `POST /api/ml/learn`) and flags windows that deviate. The monitor shows a flag with "In Ordnung" / "Nicht in
+Ordnung"; the answer teaches the agent. Invalid or lost data and values beyond the configured limits are discarded and
+appended to `ml/errors.jsonl`. Parameters: monitor → Einstellungen → KI-Anomalieerkennung, or `PUT /api/ml/config`.
+Learned state lives in `ml/` (not in git). Details: [API.md](API.md#anomaly-agent-anomalypy).
+
 ## Tests
 From `backend/`, install `requirements-dev.txt`, then run:
 ```

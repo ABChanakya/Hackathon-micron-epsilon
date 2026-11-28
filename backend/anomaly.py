@@ -1,0 +1,559 @@
+"""Anomaly agent: learns what a normal signal looks like and flags windows that do not.
+
+The hub feeds every raw sample (not the 25 fps display frames). Samples are cut into short windows
+(default 0.5 s). Each window becomes a feature vector:
+    mean, std, p2p (peak-to-peak), slope (|trend| per s), jitter (std of sample-to-sample steps),
+    err_frac (share of invalid samples), intensity (mean signal intensity %, optical sensors only).
+
+Model: per sensor, a robust baseline (median and MAD of every feature over the learned normal windows).
+The score of a window is the largest robust z-score (how many "normal spreads" a feature is away from
+normal). Noise-type features only count upwards: a quieter signal is not an anomaly.
+On top of the baseline sit the human labels (nearest neighbour in z-space):
+    a window close to a confirmed "fine" example is not flagged,
+    a window close to a confirmed "not fine" example is flagged as a known anomaly.
+
+Every window ends in exactly one of three classes:
+    normal   score below `sensitivity`. It feeds the baseline (warm-up, then `learn_online`).
+    flagged  score at or above `sensitivity` for `consecutive` windows. Becomes a pending event that a person
+             labels: "normal" moves it into the normal set, "anomaly" into the anomaly set.
+    error    too many invalid (sensor error code) or lost samples (share >= `error_fraction`), a value beyond the hard limits,
+             or a score at or above `reject_z`. Never learned, discarded, and written as one JSON line per
+             event to `error_file` (for other tools to pick up).
+Pure Python; it runs inside the hub's sensor thread.
+"""
+import json, math, os, threading, time
+from collections import deque
+from datetime import datetime
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ML_DIR = os.path.join(BASE_DIR, "ml")
+
+FEATURES = ("mean", "std", "p2p", "slope", "jitter", "err_frac", "intensity")
+TWO_SIDED = {"mean", "intensity"}           # a shift either way is unusual; all others only count upwards
+FLOOR_MULT = {"mean": 2.0, "std": 0.5, "p2p": 1.0, "slope": 2.0, "jitter": 0.5}
+UNIT_FLOOR = {"mm": 0.005, "°C": 0.05}       # smallest spread that counts as "different" in the sensor unit
+REL_FLOOR = 0.05                             # ...and at least 5 % of the normal value for noise-type features
+BASELINE_MAX = 1200                          # normal windows kept (10 min at 0.5 s), oldest dropped first
+EXAMPLES_MAX = 300                           # labelled examples kept per class
+EVENTS_MAX = 200
+MATCH_REL = 0.25                             # labelled examples far from normal match with a tolerance of 25 % of their z per radius unit
+ERROR_FLUSH_S = 5.0                          # a long error event is written in pieces of at most this length
+
+DEFAULTS = {
+    "enabled": True,
+    "window_s": 0.5,          # window length in s
+    "warmup_s": 10.0,         # s of normal signal learned after connecting before anything is flagged
+    "sensitivity": 6.0,       # robust z-score from which a window is unusual
+    "consecutive": 2,         # unusual windows in a row before a flag is raised
+    "cooldown_s": 5.0,        # quiet time after a flag before the next one
+    "reject_z": None,         # z-score from which a window is an error and discarded; None = off
+    "error_fraction": 0.5,    # share of invalid samples in a window from which it is an error
+    "hard_min": None,         # values below this are an error (as shown: mm from the sensor face, or °C); None = off
+    "hard_max": None,         # values above this are an error; None = off
+    "match_radius": 3.0,      # z-distance within which a window counts as "like" a labelled example
+    "learn_online": True,     # keep adding normal windows to the baseline while watching
+    "error_file": "ml/errors.jsonl",   # relative to backend/, or absolute; one JSON object per line
+}
+LIMITS = {"window_s": (0.1, 10.0), "warmup_s": (1.0, 600.0), "sensitivity": (1.5, 100.0), "consecutive": (1, 50),
+          "cooldown_s": (0.0, 600.0), "error_fraction": (0.01, 1.0), "match_radius": (0.1, 50.0)}
+
+
+def _median(xs):
+    s = sorted(xs)
+    n = len(s)
+    return s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
+
+
+def window_features(ts, vs, n_total, intensities=None):
+    """Features of one window. ts/vs: times and values of the VALID samples; n_total includes invalid ones."""
+    n = len(vs)
+    f = {"err_frac": 1.0 - n / n_total if n_total else 1.0}
+    if n:
+        m = sum(vs) / n
+        f["mean"] = m
+        f["std"] = math.sqrt(sum((v - m) ** 2 for v in vs) / n)
+        f["p2p"] = max(vs) - min(vs)
+    if n >= 3:
+        tm = sum(ts) / n
+        den = sum((t - tm) ** 2 for t in ts)
+        f["slope"] = abs(sum((t - tm) * (v - f["mean"]) for t, v in zip(ts, vs)) / den) if den > 0 else 0.0
+        d = [b - a for a, b in zip(vs, vs[1:])]
+        dm = sum(d) / len(d)
+        f["jitter"] = math.sqrt(sum((x - dm) ** 2 for x in d) / len(d))
+    if intensities:
+        f["intensity"] = sum(intensities) / len(intensities)
+    return f
+
+
+def load_config(ml_dir=ML_DIR):
+    cfg = dict(DEFAULTS)
+    try:
+        with open(os.path.join(ml_dir, "config.json")) as fh:
+            cfg.update({k: v for k, v in json.load(fh).items() if k in DEFAULTS})
+    except (OSError, ValueError):
+        pass
+    return cfg
+
+
+def validate_config(body, current):
+    """Merge a partial config into the current one, checking types and ranges. Raises ValueError."""
+    cfg = dict(current)
+    for k, v in body.items():
+        if k not in DEFAULTS:
+            raise ValueError(f"unknown setting: {k}")
+        if k in ("enabled", "learn_online"):
+            cfg[k] = bool(v)
+        elif k in ("hard_min", "hard_max", "reject_z"):
+            cfg[k] = None if v in (None, "") else float(v)
+        elif k == "error_file":
+            v = str(v).strip()
+            if not v.endswith(".jsonl"):
+                raise ValueError("error_file must end in .jsonl")
+            cfg[k] = v
+        else:
+            lo, hi = LIMITS[k]
+            x = int(v) if k == "consecutive" else float(v)
+            if not lo <= x <= hi:
+                raise ValueError(f"{k} must be between {lo} and {hi}")
+            cfg[k] = x
+    if cfg["hard_min"] is not None and cfg["hard_max"] is not None and cfg["hard_min"] >= cfg["hard_max"]:
+        raise ValueError("hard_min must be below hard_max")
+    if cfg["reject_z"] is not None and cfg["reject_z"] <= cfg["sensitivity"]:
+        raise ValueError("reject_z must be above sensitivity")
+    return cfg
+
+
+def _key(info):
+    model = str((info or {}).get("model") or "unknown")
+    unit = (info or {}).get("unit", "mm")
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in f"{model}_{'C' if unit == '°C' else unit}")
+
+
+class AnomalyAgent:
+    def __init__(self, ml_dir=None, config=None):
+        self.ml_dir = ml_dir = ml_dir or os.environ.get("SENSOR_ML_DIR") or ML_DIR   # env: keep tests out of backend/ml
+        self.cfg = dict(config) if config is not None else load_config(ml_dir)
+        self.lock = threading.Lock()          # the API thread reads status/events while the sensor thread feeds
+        self.info, self.key, self.unit, self.source, self.offset = {}, None, "mm", None, 0.0
+        self._clear_model()
+        self.events = deque(maxlen=EVENTS_MAX)
+        self.errors_written = 0
+        self.last_error_line = None
+        self._reset_stream()
+
+    # ---- model state -------------------------------------------------------------------
+    def _clear_model(self):
+        self.baseline = deque(maxlen=BASELINE_MAX)
+        self.normal_ex, self.anomaly_ex = [], []
+        self.stats = None                     # {feature: (median, scale)}
+        self.learned_windows = 0              # windows learned since the model was (re)started
+
+    def _reset_stream(self):
+        self.w_t0, self.w_ts, self.w_vs, self.w_int, self.w_n = None, [], [], [], 0
+        self.w_drop0, self.w_hard = None, None
+        self.streak, self.streak_feats = 0, []
+        self.cool_until = 0.0
+        self.open_event = None                # flagged event still growing
+        self.open_error = None                # error event still growing
+        self.score, self.reason, self.cls = None, None, None
+        self.warm_left = self.cfg["warmup_s"]
+
+    def model_path(self):
+        return os.path.join(self.ml_dir, f"model_{self.key}.json")
+
+    def start(self, info, source):
+        """A sensor (or replay) was connected: load the model learned for this sensor, if there is one."""
+        with self.lock:
+            self.info, self.source = dict(info or {}), source
+            self.unit = self.info.get("unit", "mm")
+            # values reach the agent as the sensor sends them (optoNCDT: from the start of the measuring range);
+            # events and hard limits use what the monitor shows (mm from the sensor face, or °C)
+            self.offset = float(self.info.get("smr_mm") or 0.0) if self.unit == "mm" else 0.0
+            self.key = _key(self.info)
+            self._clear_model()
+            self._reset_stream()
+            try:
+                with open(self.model_path()) as fh:
+                    m = json.load(fh)
+                self.baseline.extend(m.get("baseline", []))
+                self.normal_ex, self.anomaly_ex = m.get("normal", []), m.get("anomaly", [])
+                self.learned_windows = len(self.baseline)
+                self._refit()
+            except (OSError, ValueError):
+                pass
+            if self._ready():
+                self.warm_left = 0.0
+
+    def stop(self):
+        with self.lock:
+            self._close_error()
+            self._save()
+            self.key = None
+
+    def reset(self, keep_labels=False):
+        """Forget the baseline (learn again from the next seconds); optionally keep the human labels."""
+        with self.lock:
+            ex = (self.normal_ex, self.anomaly_ex)
+            self._clear_model()
+            if keep_labels:
+                self.normal_ex, self.anomaly_ex = ex
+            self._reset_stream()
+            self.events = deque((e for e in self.events if e["status"] != "pending"), maxlen=EVENTS_MAX)
+            self._save()
+
+    def _save(self):
+        if not self.key:
+            return
+        os.makedirs(self.ml_dir, exist_ok=True)
+        tmp = self.model_path() + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump({"key": self.key, "info": self.info, "saved": _now(), "features": FEATURES,
+                       "baseline": list(self.baseline), "normal": self.normal_ex, "anomaly": self.anomaly_ex}, fh)
+        os.replace(tmp, self.model_path())
+
+    def _ready(self):
+        return self.stats is not None and len(self.baseline) >= max(3, int(self.cfg["warmup_s"] / self.cfg["window_s"]))
+
+    def _refit(self):
+        if len(self.baseline) < 3:
+            self.stats = None
+            return
+        base = UNIT_FLOOR.get(self.unit, 0.001)
+        stats = {}
+        for k in FEATURES:
+            xs = [b[k] for b in self.baseline if k in b]
+            if len(xs) < 3:
+                continue
+            med = _median(xs)
+            mad = _median([abs(x - med) for x in xs])
+            if k == "err_frac":
+                floor = 0.02
+            elif k == "intensity":
+                floor = 1.0
+            else:
+                floor = base * FLOOR_MULT[k] if k == "mean" else max(base * FLOOR_MULT[k], REL_FLOOR * abs(med))
+            stats[k] = (med, max(1.4826 * mad, floor))
+        self.stats = stats
+
+    def _z(self, f):
+        """Signed z-scores per feature against the baseline."""
+        return {k: (f[k] - med) / sc for k, (med, sc) in self.stats.items() if k in f}
+
+    def _score(self, z):
+        best, why = 0.0, None
+        for k, v in z.items():
+            s = abs(v) if k in TWO_SIDED else v
+            if s > best:
+                best, why = s, k
+        return best, why
+
+    def _near(self, z, examples):
+        """The closest labelled example that shows the same kind of deviation, or None.
+        Only the features that are unusual in this window are compared (a window is "like" an example when it
+        deviates in the same way). Per feature the distance is in z-units, relative for examples far from normal
+        (a level 175 spreads away matches 175 +- 3*43.75, not +- 3); for noise-type features a window that is no
+        worse than the example matches."""
+        thr = self.cfg["sensitivity"]
+        keys = [k for k, v in z.items() if (abs(v) if k in TWO_SIDED else v) >= thr]
+        if not keys:
+            return None
+        best, hit = self.cfg["match_radius"], None
+        for ex in examples:
+            ez = self._z(ex["f"])
+            if any(k not in ez for k in keys):
+                continue
+            d = 0.0
+            for k in keys:
+                if k not in TWO_SIDED and z[k] <= ez[k]:
+                    continue
+                d = max(d, abs(z[k] - ez[k]) / max(1.0, MATCH_REL * abs(ez[k])))
+            if d <= best:
+                best, hit = d, ex
+        return hit
+
+    # ---- feeding -----------------------------------------------------------------------
+    def feed(self, t, value, sample, dropped_total, hub_wall_off):
+        """One raw sample. value None = invalid (sensor error code). Called by the hub thread only."""
+        if not self.cfg["enabled"] or not self.key:
+            return
+        if self.w_t0 is None:
+            self.w_t0, self.w_drop0 = t, dropped_total
+        if t - self.w_t0 >= self.cfg["window_s"]:
+            with self.lock:
+                self._close_window(t, dropped_total, hub_wall_off)
+            self.w_t0, self.w_ts, self.w_vs, self.w_int, self.w_n = t, [], [], [], 0
+            self.w_drop0, self.w_hard = dropped_total, None
+        self.w_n += 1
+        if value is not None:
+            self.w_ts.append(t); self.w_vs.append(value)
+            lo, hi = self.cfg["hard_min"], self.cfg["hard_max"]
+            shown = value + self.offset
+            if self.w_hard is None and ((lo is not None and shown < lo) or (hi is not None and shown > hi)):
+                self.w_hard = shown
+            it = sample.get("intensity_pct")
+            if it is not None:
+                self.w_int.append(it)
+
+    def _close_window(self, t_end, dropped_total, wall_off):
+        f = window_features(self.w_ts, self.w_vs, self.w_n, self.w_int)
+        t0 = self.w_t0
+        dropped = dropped_total - (self.w_drop0 or 0)
+        z = self._z(f) if self.stats else {}
+        score, why = self._score(z) if z else (None, None)
+        self.score = score
+        err = None
+        invalid = self.w_n - len(self.w_vs)
+        if (invalid + dropped) / max(1, self.w_n + dropped) >= self.cfg["error_fraction"]:
+            err = "dropped_samples" if dropped > invalid else "invalid_samples"
+        elif self.w_hard is not None:
+            err = "hard_limit"
+        elif score is not None and self._ready() and self.cfg["reject_z"] is not None and score >= self.cfg["reject_z"] and not self._near(z, self.normal_ex):
+            err = "extreme_score"
+        if err:
+            self.cls, self.reason = "error", err
+            self.streak, self.streak_feats = 0, []
+            self._error(err, f, z, score, wall_off + t0, wall_off + t_end, dropped)
+            return
+        self._close_error()
+
+        if not self._ready():                 # warm-up: everything that is not an error is learned as normal
+            self.cls, self.reason = "learning", None
+            self.baseline.append(f); self.learned_windows += 1
+            self.warm_left = max(0.0, self.warm_left - self.cfg["window_s"])
+            if self.learned_windows % 4 == 0 or self.warm_left == 0:
+                self._refit()
+            return
+
+        known = self._near(z, self.anomaly_ex)
+        unusual = known is not None or score >= self.cfg["sensitivity"]
+        if unusual and self._near(z, self.normal_ex) and known is None:
+            unusual = False                    # a person said windows like this are fine
+        if not unusual:
+            self.cls, self.reason = "normal", None
+            self.streak, self.streak_feats = 0, []
+            if self.open_event:
+                self.open_event = None
+            if self.cfg["learn_online"]:
+                self.baseline.append(f); self.learned_windows += 1
+                if self.learned_windows % 8 == 0:
+                    self._refit()
+            return
+
+        self.cls, self.reason = ("known_anomaly" if known else "flagged"), (known["reason"] if known else why)
+        self.streak += 1
+        self.streak_feats.append(f)
+        ev = self.open_event
+        if ev is not None:                     # the same anomaly continues: grow the event
+            ev["t_end"] = _iso(wall_off + t_end); ev["windows"] += 1
+            if score > ev["score"]:
+                ev.update(score=round(score, 2), reason=self.reason, z=_round(z), features=_round(f), value=self._shown(f))
+            if len(ev["_f"]) < 20:
+                ev["_f"].append(f)
+            return
+        if self.streak < self.cfg["consecutive"] or time.time() < self.cool_until:
+            return
+        ev = {"id": f"ml-{int(time.time() * 1000)}", "status": "anomaly" if known else "pending",
+              "known": bool(known), "label_note": known.get("note", "") if known else "",
+              "t_start": _iso(wall_off + t_end - self.streak * self.cfg["window_s"]), "t_end": _iso(wall_off + t_end),
+              "windows": self.streak, "score": round(score, 2), "reason": self.reason, "z": _round(z),
+              "features": _round(f), "value": self._shown(f), "unit": self.unit, "sensor": self.info.get("model"),
+              "serial": self.info.get("serial"), "source": self.source, "replay_of": self.info.get("replay_of"),
+              "_f": list(self.streak_feats)}
+        self.events.append(ev)
+        self.open_event = ev
+        self.cool_until = time.time() + self.cfg["cooldown_s"]
+
+    def _shown(self, f):
+        return None if f.get("mean") is None else round(f["mean"] + self.offset, 6)
+
+    def _error(self, reason, f, z, score, w0, w1, dropped):
+        e = self.open_error
+        if e and e["reason"] == reason and w1 - e["_w0"] <= ERROR_FLUSH_S:
+            e["t_end"] = _iso(w1); e["windows"] += 1; e["dropped"] += dropped
+            e["worst_value"] = _worst(e["worst_value"], self.w_hard if self.w_hard is not None else self._shown(f), self.cfg)
+            return
+        self._close_error()
+        self.open_error = {"type": "error", "reason": reason, "t_start": _iso(w0), "t_end": _iso(w1), "windows": 1,
+                           "dropped": dropped, "score": None if score is None else round(score, 2),
+                           "features": _round(f), "z": _round(z), "unit": self.unit,
+                           "worst_value": self.w_hard if self.w_hard is not None else self._shown(f),
+                           "sensor": self.info.get("model"), "serial": self.info.get("serial"),
+                           "source": self.source, "replay_of": self.info.get("replay_of"), "_w0": w0}
+
+    def _close_error(self):
+        e, self.open_error = self.open_error, None
+        if not e:
+            return
+        e.pop("_w0", None)
+        e["id"] = f"err-{int(time.time() * 1000)}-{self.errors_written}"
+        e["status"] = "error"
+        self.events.append(dict(e))
+        path = self.error_path()
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "a") as fh:
+                fh.write(json.dumps(e, ensure_ascii=False) + "\n")
+            self.errors_written += 1
+            self.last_error_line = e
+        except OSError:
+            pass
+
+    def error_path(self):
+        p = self.cfg["error_file"]
+        return p if os.path.isabs(p) else os.path.join(BASE_DIR, p)
+
+    # ---- human labels ------------------------------------------------------------------
+    def label(self, event_id, label, note=""):
+        if label not in ("normal", "anomaly"):
+            raise ValueError("label must be 'normal' or 'anomaly'")
+        with self.lock:
+            ev = next((e for e in self.events if e["id"] == event_id), None)
+            if ev is None:
+                raise KeyError(f"no such event: {event_id}")
+            if ev["status"] == "error":
+                raise ValueError("errors are discarded and cannot be labelled")
+            feats = ev.get("_f") or [ev["features"]]
+            ex = [{"f": f, "reason": ev["reason"], "note": note, "event": event_id, "at": _now()} for f in feats]
+            if label == "normal":
+                self.normal_ex = (self.normal_ex + ex)[-EXAMPLES_MAX:]
+                self.anomaly_ex = [a for a in self.anomaly_ex if a.get("event") != event_id]
+                self.baseline.extend(feats)
+                self._refit()
+            else:
+                self.anomaly_ex = (self.anomaly_ex + ex)[-EXAMPLES_MAX:]
+                self.normal_ex = [a for a in self.normal_ex if a.get("event") != event_id]
+            ev.update(status=label, label_note=note, labelled_at=_now())
+            for other in self.events:          # open events with the same pattern, or normal by now, get the same answer
+                if label == "normal" and other is not ev and other["status"] == "pending" and self.stats:
+                    oz = self._z(other["features"])
+                    if self._near(oz, ex) or self._score(oz)[0] < self.cfg["sensitivity"]:
+                        other.update(status="normal", label_note=note, labelled_at=_now(), auto=True)
+            if self.open_event is ev:
+                self.open_event = None
+            self._save()
+            self._log_label(ev)
+            return _public(ev)
+
+    def _log_label(self, ev):
+        try:
+            os.makedirs(self.ml_dir, exist_ok=True)
+            with open(os.path.join(self.ml_dir, "labels.jsonl"), "a") as fh:
+                fh.write(json.dumps(_public(ev), ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def learn_windows(self, feats):
+        """Add the windows of a recording to the normal baseline (seed from a recording)."""
+        with self.lock:
+            self.baseline.extend(feats)
+            self.learned_windows += len(feats)
+            self._refit()
+            if self._ready():
+                self.warm_left = 0.0
+            self._save()
+            return len(feats)
+
+    def set_config(self, body):
+        with self.lock:
+            new = validate_config(body, self.cfg)
+            os.makedirs(self.ml_dir, exist_ok=True)
+            with open(os.path.join(self.ml_dir, "config.json"), "w") as fh:
+                json.dump(new, fh, indent=2)
+            relearn = new["window_s"] != self.cfg["window_s"]
+            self.cfg = new
+            if relearn:                        # features depend on the window length: learn again
+                self._clear_model(); self._reset_stream()
+            return dict(self.cfg)
+
+    # ---- read side ---------------------------------------------------------------------
+    def frame(self):
+        """Small summary for every /ws/stream frame."""
+        if not self.cfg["enabled"] or not self.key:
+            return {"enabled": self.cfg["enabled"], "state": "idle" if self.cfg["enabled"] else "off",
+                    "pending": None, "pending_count": 0, "errors_written": self.errors_written}
+        pending = [e for e in self.events if e["status"] == "pending"]
+        state = "learning" if not self._ready() else {"error": "error", "flagged": "alert",
+                                                       "known_anomaly": "alert"}.get(self.cls, "watching")
+        need = self.cfg["warmup_s"]
+        return {"enabled": True, "state": state, "reason": self.reason,
+                "score": None if self.score is None else round(self.score, 2), "sensitivity": self.cfg["sensitivity"],
+                "progress": 1.0 if self._ready() else round(min(1.0, (need - self.warm_left) / need), 2),
+                "pending": _public(pending[-1]) if pending else None, "pending_count": len(pending),
+                "known": _public(self.open_event) if self.cls == "known_anomaly" and self.open_event else None,
+                "errors_written": self.errors_written}
+
+    def status(self):
+        with self.lock:
+            return {**self.frame(), "config": dict(self.cfg), "model": self.key, "sensor": self.info.get("model"), "baseline_windows": len(self.baseline),
+                    "normal_examples": len(self.normal_ex), "anomaly_examples": len(self.anomaly_ex),
+                    "baseline": {k: {"median": _r(m), "spread": _r(s)} for k, (m, s) in (self.stats or {}).items()},
+                    "error_file": self.error_path(), "last_error": self.last_error_line}
+
+    def list_events(self, status=None, limit=50):
+        with self.lock:
+            evs = [_public(e) for e in self.events if status is None or e["status"] == status]
+        return evs[-limit:][::-1]
+
+
+def features_from_csv(path, window_s, value_col=None):
+    """Windows of a recording CSV (backend/recordings) in the same features as the live stream.
+    Windows that would be errors live (too many invalid or lost samples) are skipped."""
+    import csv
+    out, ts, vs, its, n, t0, last_c, lost = [], [], [], [], 0, None, None, 0
+    with open(path, newline="") as fh:
+        r = csv.DictReader(fh)
+        col = value_col or ("temp_c" if "temp_c" in (r.fieldnames or []) else "dist_mm")
+        for row in r:
+            t = float(row["t_s"])
+            if t0 is None:
+                t0 = t
+            if t - t0 >= window_s:
+                f = window_features(ts, vs, n, its)
+                if (n - len(vs) + lost) / max(1, n + lost) < DEFAULTS["error_fraction"]:
+                    out.append(f)
+                ts, vs, its, n, t0, lost = [], [], [], 0, t, 0
+            n += 1
+            c = row.get("counter")
+            if c:
+                c = int(c)
+                if last_c is not None and 0 < c - last_c - 1 < 1000:
+                    lost += c - last_c - 1
+                last_c = c
+            v = row.get(col)
+            if v not in (None, "") and not row.get("error_code"):
+                ts.append(t); vs.append(float(v))
+                it = row.get("intensity_pct")
+                if it:
+                    its.append(float(it))
+    return out
+
+
+def _worst(a, b, cfg):
+    if a is None or b is None:
+        return a if b is None else b
+    lo, hi = cfg["hard_min"], cfg["hard_max"]
+    if hi is not None and max(a, b) > hi:
+        return max(a, b)
+    if lo is not None and min(a, b) < lo:
+        return min(a, b)
+    return a
+
+
+def _public(e):
+    return {k: v for k, v in e.items() if not k.startswith("_")}
+
+
+def _r(x, nd=6):
+    return None if x is None else round(x, nd)
+
+
+def _round(d):
+    return {k: _r(v) for k, v in d.items()}
+
+
+def _iso(wall):
+    return datetime.fromtimestamp(wall).isoformat(timespec="milliseconds")
+
+
+def _now():
+    return datetime.now().isoformat(timespec="seconds")
