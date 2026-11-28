@@ -131,6 +131,7 @@ Dann auf dem Handy `http://<IP-Adresse des Rechners>:4174/` öffnen. Die IP-Adre
 (macOS), `hostname -I` (Linux) oder `ipconfig` beim WLAN-Adapter (Windows). Fragt die Firewall, ob Python
 Verbindungen annehmen darf, erlaube es für private Netze. Das Handy kann nur lesen: Der Handy-Server gibt nur
 Messwerte und Gerätestatus weiter, keine Einstellungen.
+Schritt für Schritt mit Bildern, Hotspot und QR-Code: [Handy-Ansicht](frontend/Handy%20frontend/README.md).
 
 ### Aktualisieren und Entfernen
 

@@ -221,3 +221,31 @@
 }
 :where([data-theme="light"]) .factory-section .factory-links line { stroke: #60798d; }
 :where([data-theme="light"]) .factory-section .factory-links circle { fill: #18212a; stroke: #eef2f5; }
+
+/* Light colour scheme: module view (grid, boxes, tiles) in the page's light colours; alarms stay red. */
+:where([data-theme="light"]) .factory-section .factory-grid { background: var(--surface2); border-color: var(--border); }
+:where([data-theme="light"]) .factory-section .factory-module { background: var(--surface); border-color: var(--border); color: var(--ink); }
+:where([data-theme="light"]) .factory-section .factory-module-place,
+:where([data-theme="light"]) .factory-section .factory-tile-quantity,
+:where([data-theme="light"]) .factory-section .factory-tile-state,
+:where([data-theme="light"]) .factory-section .factory-tile-value small { color: var(--muted); }
+:where([data-theme="light"]) .factory-section .factory-tile { background: var(--surface2); border-color: var(--border); color: var(--ink); }
+:where([data-theme="light"]) .factory-section .factory-tile:hover,
+:where([data-theme="light"]) .factory-section .factory-tile[aria-pressed="true"] { border-color: var(--ink); }
+:where([data-theme="light"]) .factory-section .factory-chip { background: color-mix(in srgb, var(--good) 14%, var(--surface)); color: var(--good); }
+@keyframes factory-alarm-blink-light {
+  0%, 100% { background: var(--surface); box-shadow: 0 0 0 0 transparent; }
+  50% { background: #ffd9dc; box-shadow: 0 0 0 3px #e0293a66; }
+}
+:where([data-theme="light"]) .factory-section .factory-module[data-alarm="active"],
+:where([data-theme="light"]) .factory-section .factory-tile[data-alarm="active"] { border-color: var(--error); animation-name: factory-alarm-blink-light; }
+:where([data-theme="light"]) .factory-section .factory-module[data-alarm="latched"],
+:where([data-theme="light"]) .factory-section .factory-tile[data-alarm="latched"] { border-color: var(--error); background: color-mix(in srgb, var(--error) 7%, var(--surface)); }
+:where([data-theme="light"]) .factory-section .factory-tile[data-alarm="active"] .factory-tile-state,
+:where([data-theme="light"]) .factory-section .factory-tile[data-alarm="latched"] .factory-tile-state { color: var(--error); }
+@media (prefers-reduced-motion: reduce) {
+  :where([data-theme="light"]) .factory-section .factory-module[data-alarm="active"],
+  :where([data-theme="light"]) .factory-section .factory-tile[data-alarm="active"] { animation: none; background: #ffd9dc; }
+}
+:where([data-theme="light"]) .factory-section .factory-chip[data-state="active"],
+:where([data-theme="light"]) .factory-section .factory-chip[data-state="latched"] { background: var(--error); color: #fff; animation: none; }

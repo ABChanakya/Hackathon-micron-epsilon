@@ -64,7 +64,7 @@ export function mountFactoryPlan(parent, { selectSensor = () => {}, onAlarm = ()
     <div class="factory-content" id="${contentId}" ${expanded ? '' : 'hidden'}>
       <section class="detail-panel factory-panel" aria-labelledby="${titleId}">
         <div class="factory-toolbar">
-          <div><h2 id="${titleId}" data-factory-text="buildingPlan">Gebäudeplan</h2><p class="factory-plan-note" data-factory-text="planNote">Fiktiver Gebäudeplan. Es wurde kein echter Gebäudeplan hochgeladen.</p></div>
+          <div><h2 id="${titleId}" data-factory-text="buildingPlan">Gebäudeplan</h2><p class="factory-plan-note" data-factory-text="planNote">Fiktiver Gebäudeplan.</p></div>
           <div class="factory-zoom" role="group" aria-label="Ansicht" data-factory-label="viewLabel">
             <button type="button" data-zoom="out" aria-label="Herauszoomen: Gebäudeplan" data-factory-label="zoomOut">−</button>
             <button type="button" data-view="map" aria-pressed="true" data-factory-text="map">Plan</button>
