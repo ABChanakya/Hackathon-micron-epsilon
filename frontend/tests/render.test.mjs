@@ -98,3 +98,29 @@ test('assistant chart summaries match the visible window and displayed zero offs
   assert.ok(Math.abs(summary.trend - .1) < 1e-9);
   assert.equal(vm.runInContext('rt.points[0].value', context), 29);
 });
+
+test('deviation alarm offers one-shot and repeating modes and stops after recovery', () => {
+  engine.useSensor('ild1900');
+  const context = viewContext();
+  let tones = 0, nextTimer = 0, clearedTimer = null, scheduled;
+  context.playAlertSound = () => { tones++; };
+  context.setInterval = callback => { scheduled = callback; return ++nextTimer; };
+  context.clearInterval = timer => { clearedTimer = timer; };
+  context.localStorage = { setItem() {} };
+  context.toast = () => {};
+  vm.runInContext("rt.activeErrorKeys.add('deviation')", context);
+
+  const html = vm.runInContext('errorCenter()', context);
+  assert.match(html, /Un seul « pi-pi-pi »/);
+  assert.match(html, /Répéter jusqu’à stabilisation/);
+  vm.runInContext("setDeviationAlarmMode('single')", context);
+  assert.equal(vm.runInContext('rt.deviationAlarmTimer', context), null);
+  vm.runInContext("setDeviationAlarmMode('repeat')", context);
+  assert.equal(tones, 1, 'repeat mode sounds immediately');
+  assert.equal(vm.runInContext('rt.deviationAlarmTimer', context), 1);
+  scheduled();
+  assert.equal(tones, 2, 'repeat mode continues sounding while the deviation remains active');
+  vm.runInContext("resolveIncident('deviation')", context);
+  assert.equal(clearedTimer, 1, 'the alarm timer stops after the value returns within limits');
+  assert.equal(vm.runInContext('rt.deviationAlarmTimer', context), null);
+});
