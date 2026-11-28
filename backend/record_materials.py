@@ -2,11 +2,12 @@
 """Record test materials with the connected sensor, one material after the other. Run it in a terminal:
 
     cd backend
-    python3 record_materials.py              # real sensor (found automatically)
+    python3 record_materials.py              # real sensor (found automatically: optoNCDT or thermoMETER)
     python3 record_materials.py --sensor SIM # practice run without a sensor
 
 For every material it asks for the name, waits until you have placed it, checks that the sensor sees it and that it
-holds still, then records two takes (the sensor's median averaging, and no averaging). Recordings land in
+holds still, then records. Laser sensors (optoNCDT): two takes, the sensor's median averaging and no averaging.
+Thermometer (thermoMETER UC, settings are read-only here): one take as the sensor is configured. Recordings land in
 backend/recordings/ and show up in the UI's recordings list. Only the Python standard library is needed.
 Press Ctrl+C at any time: the sensor is put back the way it was.
 """
@@ -104,11 +105,12 @@ def snapshot(base, n=6, gap=0.25):
     return frames[-1], vals
 
 
-def wait_ready(base, cfg, name, lo, hi):
+def wait_ready(base, cfg, name, sen):
     """Loop until the material is in range and still. Returns False if the user wants to skip it."""
+    lo, hi, unit = sen["lo"], sen["hi"], sen["unit"]
     while True:
-        ans = ask(f"\n  Place '{name}' flat, {lo:g} to {hi:g} mm from the sensor face, hold it still, then press Enter "
-                  f"(s = skip this material): ")
+        where = f"flat, {lo:g} to {hi:g} mm from the sensor face" if unit == "mm" else "in front of the sensor (point the sensor at it)"
+        ans = ask(f"\n  Place '{name}' {where}, hold it still, then press Enter (s = skip this material): ")
         if ans.lower() == "s":
             return False
         ensure_streaming(base, cfg)
@@ -119,13 +121,16 @@ def wait_ready(base, cfg, name, lo, hi):
             continue
         if not vals:
             err = (f.get("last_error") or {}).get("text", "no target")
-            print(f"  ! The sensor sees no target ({err}). Check the distance ({lo:g}-{hi:g} mm from the face) and try again.")
+            print(f"  ! The sensor gives no valid reading ({err}). Check the position and try again.")
             continue
-        spread_um = (max(vals) - min(vals)) * 1000
-        face = f.get("dist_from_face_mm")
-        print(f"  Target found: {face:.2f} mm from the face, intensity {f.get('intensity')}%, LED {(f.get('state_flags') or {}).get('led')}, "
-              f"spread over 1.5 s: {spread_um:.1f} um" if face is not None else f"  Target found, spread {spread_um:.1f} um")
-        if spread_um > 50:
+        spread = max(vals) - min(vals)
+        if unit == "mm":
+            face = f.get("dist_from_face_mm")
+            print(f"  Target found: {face:.2f} mm from the face, intensity {f.get('intensity')}%, LED {(f.get('state_flags') or {}).get('led')}, "
+                  f"spread over 1.5 s: {spread * 1000:.1f} um" if face is not None else f"  Target found, spread {spread * 1000:.1f} um")
+        else:
+            print(f"  Reading {f.get('raw_value'):.2f} {unit} (sensor head {f.get('head_c')} {unit}), spread over 1.5 s: {spread:.2f} {unit}")
+        if spread > sen["still"]:
             ans = ask("  ! It is moving. Hold it still and press Enter to check again, or type g to record anyway: ")
             if ans.lower() != "g":
                 continue
@@ -137,10 +142,12 @@ def wait_ready(base, cfg, name, lo, hi):
 
 def record_take(base, cfg, name, tag, avg, rate, seconds):
     ensure_streaming(base, cfg)
-    api(base, "/api/settings", {"rate_khz": rate, "averaging": avg})
-    time.sleep(1.0)
+    if avg is not None:                      # None: the sensor's settings stay as they are (read-only thermometer)
+        api(base, "/api/settings", {"rate_khz": rate, "averaging": avg})
+        time.sleep(1.0)
+    how = f"{rate:g} kHz; {tag}" if avg is not None else tag
     r = api(base, "/api/record/start", {"label": f"{name} | {tag}", "duration_s": seconds,
-                                        "notes": f"material: {name}; {rate:g} kHz; {tag}; static"})
+                                        "notes": f"material: {name}; {how}; static"})
     file = r["rec_file"]
     t0 = time.time()
     while True:
@@ -161,15 +168,20 @@ def fmt(meta):
     if not meta or not meta.get("samples"):
         return "no data"
     valid = 100.0 * meta["valid"] / meta["samples"]
-    p2p = "-" if meta["min_mm"] is None else f"{(meta['max_mm'] - meta['min_mm']) * 1000:.1f} um"
-    mean = "-" if meta["mean_mm"] is None else f"{meta['mean_mm']:.4f} mm"
+    unit = meta.get("unit", "mm")              # min_mm / max_mm / mean_mm are in the recording's unit
+    if meta["min_mm"] is None:
+        p2p = mean = "-"
+    elif unit == "mm":
+        p2p, mean = f"{(meta['max_mm'] - meta['min_mm']) * 1000:.1f} um", f"{meta['mean_mm']:.4f} mm"
+    else:
+        p2p, mean = f"{meta['max_mm'] - meta['min_mm']:.2f} {unit}", f"{meta['mean_mm']:.2f} {unit}"
     return f"{meta['samples']} samples, {valid:.1f}% valid, {meta['dropped']} dropped, mean {mean}, spread {p2p}"
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--api", default="http://localhost:8000", help="backend address (started automatically if not running)")
-    ap.add_argument("--sensor", default="auto", help="auto (find the USB serial port) or SIM for a practice run")
+    ap.add_argument("--sensor", default="auto", help="auto (probe the USB serial ports), ILD-serial, thermo, or SIM for a practice run")
     ap.add_argument("--port", help="serial port, e.g. /dev/cu.usbserial-010720 (default: found automatically)")
     ap.add_argument("--seconds", type=float, default=10, help="length of each take (default 10)")
     ap.add_argument("--rate", type=float, default=4, help="measuring rate in kHz (default 4)")
@@ -185,33 +197,38 @@ def main():
     if a.sensor.upper() == "SIM":
         cfg = {"sensor": "SIM"}
     else:
-        ports = [a.port] if a.port else sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*"))
-        if not ports:
+        if not a.port and not (glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*")):
             raise SystemExit("No USB serial port found. Plug the sensor in (and check the cable), or use --sensor SIM to practise.")
-        port = ports[0]
-        if len(ports) > 1:
-            for i, p in enumerate(ports, 1):
-                print(f"  {i}. {p}")
-            port = ports[int(ask(f"Which port is the sensor [1-{len(ports)}]? ") or 1) - 1]
-        cfg = {"sensor": "ILD-serial", "port": port}
+        cfg = {"sensor": "AUTO" if a.sensor.lower() == "auto" else a.sensor}   # AUTO: the backend probes each port
+        if a.port:
+            cfg["port"] = a.port
 
     results, original = [], None
     try:
         if not server_up(base):
             print("Starting the backend...")
             start_server(base)
-        info = connect(base, cfg)["info"]
-        original = api(base, "/api/settings")
-        lo = info.get("smr_mm") or 0
-        hi = lo + (info.get("range_mm") or 0)
-        print(f"\nConnected: {info.get('model')}, serial {info.get('serial')}, measuring range {lo:g}-{hi:g} mm from the sensor face.")
-        print(f"Each material gets {len(takes)} take(s) of {a.seconds:g} s at {a.rate:g} kHz. "
-              f"While this runs the sensor's analog output is off.")
+        st = connect(base, cfg)
+        info = st["info"]
+        cfg = {**cfg, **st.get("cfg", {})}          # AUTO resolved: reconnects use the sensor that was found
+        unit = info.get("unit", "mm")
+        if unit == "mm":
+            lo = info.get("smr_mm") or 0
+            sen = {"unit": unit, "lo": lo, "hi": lo + (info.get("range_mm") or 0), "still": 0.05}     # 50 um
+            original = api(base, "/api/settings")
+            print(f"\nConnected: {info.get('model')}, serial {info.get('serial')}, measuring range {sen['lo']:g}-{sen['hi']:g} mm from the sensor face.")
+            print(f"Each material gets {len(takes)} take(s) of {a.seconds:g} s at {a.rate:g} kHz. "
+                  f"While this runs the sensor's analog output is off.")
+        else:
+            sen = {"unit": unit, "lo": info.get("range_min", -50), "hi": info.get("range_max", 900), "still": 0.5}   # 0.5 degC
+            takes = [("as configured", None)]
+            print(f"\nConnected: {info.get('model')} ({info.get('name', 'thermometer')}), range {sen['lo']:g} to {sen['hi']:g} {unit}.")
+            print(f"Each material gets one take of {a.seconds:g} s with the sensor's own settings.")
         while True:
             name = ask("\nMaterial name (just press Enter when you are finished): ")
             if not name:
                 break
-            if not wait_ready(base, cfg, name, lo, hi):
+            if not wait_ready(base, cfg, name, sen):
                 continue
             for tag, avg in takes:
                 while True:

@@ -12,9 +12,9 @@ Im Repository mit Python 3.10 oder neuer:
 ./start.sh
 ```
 
-Öffne anschließend http://127.0.0.1:8000/ und wähle **Sensor verbinden**. Alternativ startet `npm start` im Ordner `frontend/` denselben Messserver. Dashboard, API und WebSocket teilen sich einen Ursprung. Eine bereits laufende Messung wird automatisch angezeigt.
+Öffne anschließend http://127.0.0.1:8000/ und wähle **Sensor verbinden**. Alternativ startet `npm start` im Ordner `frontend/` denselben Messserver. Dashboard, API und WebSocket teilen sich einen Ursprung. Läuft im Backend bereits ein Sensor (optoNCDT in mm oder thermoMETER in °C), zeigt der Monitor ihn sofort an.
 
-HTML, CSS, JavaScript, Schriften und Bibliotheken liegen in `dist/`. Für eine reine statische Ansicht steht `npm run start:static` bereit; Live-Daten benötigen den Messserver am selben Ursprung oder einen passenden Proxy.
+HTML, CSS, JavaScript, Schriften und Bibliotheken liegen in `dist/`. Für eine reine statische Ansicht steht `npm run start:static` bereit; Live-Daten benötigen den Messserver am selben Ursprung, auf Port 8000 oder über einen passenden Proxy.
 
 ## Datenquelle
 

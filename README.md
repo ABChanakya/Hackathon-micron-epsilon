@@ -26,6 +26,47 @@ der Sensor erhält dabei seine ursprünglichen Ausgabeeinstellungen zurück.
 Die separate Diagnoseansicht liegt unter http://127.0.0.1:8000/diagnostics/.
 Die neue Präsentationsseite erreichst du unter http://127.0.0.1:8000/pitch/.
 
+## Sensoren
+
+| Sensor | Misst | Anschluss | Stand |
+|---|---|---|---|
+| optoNCDT ILD1900-10 | Abstand, 20 bis 30 mm vor der Sensorfront | RS422-USB-Wandler | am Gerät geprüft, bis 10 kHz |
+| optoNCDT ILD1420-50 | Abstand, 35 bis 85 mm | RS422-USB-Wandler | am Gerät geprüft, bis 4 kHz (dieses Exemplar) |
+| thermoMETER UC (UC-SF22-S3) | Oberflächentemperatur, -50 bis 900 °C | 3,3-V-TTL-USB-Kabel, ME-Bus | am Gerät geprüft, etwa 55 Werte/s, Einstellungen nur lesbar |
+| Simulator, Aufzeichnungen | | keiner | für Entwicklung und Demo ohne Hardware |
+
+Welcher Sensor an welchem USB-Anschluss hängt, beantwortet `GET /api/sensors/scan?probe=true`; jeder Anschluss wird
+dabei nur lesend gefragt. `POST /api/connect` mit `{"sensor":"AUTO"}` verbindet den ersten Sensor, der antwortet.
+
+## Aufbau
+
+```mermaid
+flowchart LR
+  S1[optoNCDT ILD1900 / ILD1420] -- RS422 / USB --> B
+  S2[thermoMETER UC] -- ME-Bus / USB-TTL --> B
+  B[Backend<br/>FastAPI, Port 8000] -- /ws/stream + /api --> M[Monitor<br/>frontend/dist]
+  B -- /ws/bridge --> L[Präsentationsseite<br/>/pitch/]
+  B -- CSV + JSON --> R[(backend/recordings)]
+  R -- Wiedergabe --> B
+  D[(727 Handbücher + MEDAQLib)] --> Q[rag/ Suche]
+```
+
+| Ordner | Inhalt |
+|---|---|
+| `backend/` | Messserver: API, Sensortreiber (`sources.py`), Aufzeichnungen, `record_materials.py` für geführte Materialaufnahmen ([Backend](backend/README.md), [API](backend/API.md)) |
+| `frontend/` | Monitor (Messplatz), wird von `dist/` unverändert ausgeliefert ([Frontend](frontend/README.md)) |
+| `scrollcraft/builds/landing/` | Präsentationsseite für den Pitch, zehn Sprachen ([README](scrollcraft/builds/landing/README.md)) |
+| `backend/recordings/` | Beispielaufnahmen des ILD1900 (sechs Materialien) zum Abspielen ohne Hardware |
+| `rag/` | Volltextsuche über die Handbücher, z. B. `python3 -I rag/query.py "MEASRATE" -f 1900` |
+| `productinformation/`, `software/` | Infopaket des Hackathons: Handbücher, Datenblätter, MEDAQLib, sensorTOOL |
+
+Gut zu wissen:
+- Solange ein optoNCDT verbunden ist, ist sein analoger 4-20-mA-Ausgang aus (die Daten laufen über RS422).
+  Trennen oder Strg+C stellt ihn wieder her; nach einem gezogenen Kabel geschieht das beim nächsten Verbinden.
+- Das thermoMETER-Protokoll stammt aus dem Trace-Log der MEDAQLib in `software/MEDAQLib_samples/` und wurde am Sensor
+  geprüft. Emissionsgrad und Mittelung lassen sich von hier aus noch nicht ändern.
+- Die 3D-Modelle im Monitor werden separat gepflegt.
+
 ## Prüfen
 
 ```sh

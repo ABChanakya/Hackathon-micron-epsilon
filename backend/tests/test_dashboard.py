@@ -69,9 +69,10 @@ class DashboardTests(unittest.TestCase):
         with self.client.websocket_connect("/ws/stream") as socket:
             frame = socket.receive_json()
         self.assertEqual(frame["source"], "sim")
-        self.assertEqual(frame["info"]["model"], "SIM-ILD1420-50")
-        self.assertEqual(frame["info"]["smr_mm"], 35)
-        self.assertEqual(frame["info"]["range_mm"], 50)
+        # the simulator imitates the ILD1900-10 the monitor is built for
+        self.assertEqual(frame["info"]["model"], "SIM-ILD1900-10")
+        self.assertEqual(frame["info"]["smr_mm"], 20)
+        self.assertEqual(frame["info"]["range_mm"], 10)
         self.assertIn("dist_from_face_mm", frame)
         self.assertEqual(self.client.get("/api/latest").json()["source"], "sim")
         with self.client.websocket_connect("/ws/bridge") as socket:
@@ -80,8 +81,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(bridge["sensor"], frame["info"]["model"])
         self.assertEqual(bridge["info"], frame["info"])
         self.assertIsInstance(bridge["current_valid"], bool)
-        self.assertEqual(bridge["range_start"], 35)
-        self.assertEqual(bridge["range_end"], 85)
+        self.assertEqual(bridge["range_start"], 20)
+        self.assertEqual(bridge["range_end"], 30)
 
     def test_thermal_frames_preserve_temperature_metadata_and_ignore_display_tare_in_bridge(self):
         with patch.object(backend.hubmod, "ThermoSource", ThermalFixture):

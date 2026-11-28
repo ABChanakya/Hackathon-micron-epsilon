@@ -9,8 +9,10 @@
   var code = params.get('lang') || stored || (navigator.language || 'de').slice(0, 2).toLowerCase();
   if (!I[code]) code = 'de';
   var T = I[code];
-  var WS_URL = params.get('ws') || 'ws://localhost:8000/ws/bridge';
-  var MONITOR_URL = params.get('monitor') || 'http://127.0.0.1:8000/';
+  // The backend (port 8000) serves this page at /pitch/ and the monitor at /. Opened on its own, it still links there.
+  var HOST = location.hostname || 'localhost';
+  var WS_URL = params.get('ws') || ((location.protocol === 'https:' ? 'wss://' : 'ws://') + HOST + ':8000/ws/bridge');
+  var MONITOR_URL = params.get('monitor') || (location.port === '8000' ? '/' : 'http://' + HOST + ':8000/');
 
   var fmt = function (v, d) {
     return new Intl.NumberFormat(T._locale, { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }).format(v);
@@ -121,8 +123,9 @@
   function setBadge() {
     if (live.on && live.got) {
       var model = (live.info && live.info.model) || D.sensor.model;
-      badge.textContent = t(live.info && live.info.source === 'replay' ? 'badge_replay' : 'badge_live', { model: model });
-      badge.classList.toggle('is-live', !(live.info && live.info.source === 'replay'));
+      var notLive = !!(live.info && (live.info.source === 'replay' || live.info.source === 'sim'));   // never call a replay or the simulator live
+      badge.textContent = t(notLive ? 'badge_replay' : 'badge_live', { model: model });
+      badge.classList.toggle('is-live', !notLive);
     } else {
       badge.textContent = t('badge_rec', { name: t('mat_metal_stairs') });
       badge.classList.remove('is-live');

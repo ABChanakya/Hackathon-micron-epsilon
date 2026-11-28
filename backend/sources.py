@@ -50,7 +50,7 @@ def _check_channels(ch):
 
 
 class SimSource:
-    """Fake ILD1420-50: slow sine + noise in mm, with counter/timestamp/intensity and occasional errors."""
+    """Fake ILD1900-10 (the monitor's sensor): slow sine + noise in mm, counter/timestamp/intensity, occasional errors."""
     kind = "sim"
 
     def __init__(self):
@@ -59,7 +59,7 @@ class SimSource:
         self._n = 0
         self.avg = {"mode": "MEDIAN", "depth": 9}
         self.channels = list(SERIAL_OPTIONS["channels"])
-        self.info = {"model": "SIM-ILD1420-50", "serial": "SIM-0001", "range_mm": 50.0, "smr_mm": 35, "unit": "mm"}
+        self.info = {"model": "SIM-ILD1900-10", "serial": "SIM-0001", "range_mm": 10.0, "smr_mm": 20, "unit": "mm"}
 
     def open(self, cfg):
         self._t0, self._n = time.perf_counter(), 0
@@ -74,7 +74,7 @@ class SimSource:
         for i in range(self._n, due):
             t = i / self.rate_hz
             err = random.random() < 0.001          # ~0.1% invalid readings, like a real sensor ('no peak')
-            s = {"dist": ERR_BASE - 4 if err else 25 + 10 * math.sin(2 * math.pi * 0.5 * t) + random.gauss(0, 0.015)}
+            s = {"dist": ERR_BASE - 4 if err else 5 + 2 * math.sin(2 * math.pi * 0.5 * t) + random.gauss(0, 0.003)}
             if "COUNTER" in self.channels:
                 s["counter"] = i % 262144
             if "TIMESTAMP" in self.channels:
@@ -644,6 +644,41 @@ class ThermoSource:
 
     def command(self, cmd, params):
         raise RuntimeError("the thermoMETER driver is read-only: commands are not supported")
+
+
+def serial_ports():
+    """USB serial ports that may have a sensor on them (macOS and Linux names)."""
+    import glob
+    return sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*"))
+
+
+def probe_port(port):
+    """Identify what is connected to a serial port, read-only, without changing any setting:
+    1. optoNCDT (ILD1420, ILD1900): ASCII GETINFO at 921600 baud 8N1, answer contains "Name: ...".
+    2. thermoMETER UC: ME-Bus FDL status + identity read at 115200 baud 8E1.
+    Returns {"sensor": "ILD-serial" | "thermo", "model": ..., "port": port} or None."""
+    import serial
+    try:
+        s = serial.Serial(port, 921600, timeout=0.3)
+        try:
+            s.write(b"\r\n"); time.sleep(0.2); s.reset_input_buffer()
+            s.write(b"GETINFO\r\n"); time.sleep(0.5)
+            answer = s.read(4000)
+        finally:
+            s.close()
+        m = re.search(rb"Name:\s*(\S+)", answer)
+        if m:
+            return {"sensor": "ILD-serial", "model": m.group(1).decode(errors="replace"), "port": port}
+    except Exception:
+        pass
+    t = ThermoSource()
+    try:
+        t.open({"port": port})
+        return {"sensor": "thermo", "model": t.info.get("model"), "port": port}
+    except Exception:
+        return None
+    finally:
+        t.close()
 
 
 class ReplaySource:

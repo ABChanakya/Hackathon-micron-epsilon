@@ -1,4 +1,11 @@
-"""Run:  uvicorn app:app --port 8000   (from this folder)   ->  http://localhost:8000"""
+"""Sensor backend. Run ./start.sh in the repository root (or: uvicorn app:app --port 8000 in this folder).
+
+One port serves everything:
+  /               the monitor (frontend/dist)
+  /pitch/         the pitch landing page (scrollcraft/builds/landing)
+  /diagnostics/   a plain diagnostic page (backend/static)
+  /api/...        REST API, /ws/stream and /ws/bridge   (see API.md)
+"""
 import asyncio, csv, glob, json, os
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import hub as hubmod
+from sources import probe_port, serial_ports
 
 app = FastAPI(title="Micro-Epsilon sensor backend")
 # The monitor website and the landing page run on their own local ports and read /api/status, so allow
@@ -31,14 +39,14 @@ async def _shutdown():
 
 
 class ConnectReq(BaseModel):
-    sensor: str = "SIM"            # "SIM" or a MEDAQLib name: ILD1420, ILD5500, ME-Bus, ...
+    sensor: str = "SIM"            # AUTO (find it) | ILD-serial | thermo | SIM | REPLAY | a MEDAQLib name (ILD1420, ...)
     interface: str = "RS232"       # RS232 | TCP/IP | IF2004_USB ...
     port: str | None = None        # COM25 or /dev/ttyUSB0
     baudrate: int | None = None
     ip: str | None = None
     address: int | None = None          # thermo: ME-Bus address (default 126)
-    channels: list[str] | None = None   # ILD1420-serial / SIM: extra values, e.g. ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]
-    restore_output: str | None = None    # ILD1420-serial: OUTPUT mode to set on disconnect
+    channels: list[str] | None = None   # ILD-serial / SIM: extra values, e.g. ["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]
+    restore_output: str | None = None    # ILD-serial: OUTPUT mode to set on disconnect
     file: str | None = None              # REPLAY: recording file name (rec_....csv)
     files: list[str] | None = None       # REPLAY: several recordings played back to back (playlist)
     speed: float = 1.0                   # REPLAY: playback speed
@@ -70,12 +78,24 @@ def latest():
 
 
 @app.get("/api/sensors/scan")
-def scan():
-    # Simulator + USB-serial ports (candidates for "ILD1420-serial"; not probed until you connect) + recordings to replay.
-    ports = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/ttyUSB*"))
-    return [{"sensor": "SIM", "model": "SIM-ILD1420-50", "interface": "virtual", "port": None, "serial": "SIM-0001"}] + \
-           [{"sensor": "ILD-serial", "model": "optoNCDT on serial port (unverified)", "interface": "serial", "port": p, "serial": None} for p in ports] + \
-           [{"sensor": "thermo", "model": "thermoMETER UC on serial port (unverified)", "interface": "ME-Bus", "port": p, "serial": None} for p in ports] + \
+def scan(probe: bool = False):
+    """Simulator, USB serial ports and recordings. Without ?probe each port is listed once per sensor type as an
+    unverified candidate. With ?probe=true each free port is asked (read-only) which sensor it has."""
+    in_use = hub.cfg.get("port") if hub.src else None
+    ports = []
+    for p in serial_ports():
+        if p == in_use:
+            kind = hub.cfg.get("sensor")
+            ports.append({"sensor": kind, "model": (hub.src.info or {}).get("model"),
+                          "interface": "ME-Bus" if kind == "thermo" else "serial", "port": p, "in_use": True})
+        elif probe:
+            found = probe_port(p)
+            if found:
+                ports.append({**found, "interface": "ME-Bus" if found["sensor"] == "thermo" else "serial", "verified": True})
+        else:
+            ports += [{"sensor": "ILD-serial", "model": "optoNCDT (unverified)", "interface": "serial", "port": p, "serial": None},
+                      {"sensor": "thermo", "model": "thermoMETER UC (unverified)", "interface": "ME-Bus", "port": p, "serial": None}]
+    return [{"sensor": "SIM", "model": "SIM-ILD1900-10", "interface": "virtual", "port": None, "serial": "SIM-0001"}] + ports + \
            [{"sensor": "REPLAY", "model": "recording", "interface": "file", "file": r["file"], "label": r.get("label", "")}
             for r in recordings()]
 

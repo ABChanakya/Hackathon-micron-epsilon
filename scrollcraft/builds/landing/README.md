@@ -11,13 +11,14 @@ The monitor and live bridge use that same server. For a standalone static previe
 cd scrollcraft/builds/landing
 python3 -m http.server 4500
 ```
-Then open http://localhost:4500. Opening `index.html` directly also works.
+Then open http://localhost:4500 (opening `index.html` directly also works). Live mode and the monitor link then point
+to the backend on port 8000 of the same machine.
 
 - **Language:** the switch at the top right, or `?lang=de|en|fr|es|it|cs|zh|ja|ko|pirate`.
 - **Live mode** (the "Live schalten" button in the curve section): needs the project backend on port 8000 with a sensor
   connected (`backend/`, `/ws/bridge`). Without it the page says so and keeps playing the recording. If the backend is
   replaying a recording, the badge says "Wiedergabe", never "Live". Other address: `?ws=ws://host:8000/ws/bridge`.
-- **"Monitor öffnen"** links to the monitor website at http://127.0.0.1:8000/ (start it with `./start.sh` or from `frontend/`).
+- **"Monitor öffnen"** opens the monitor: `/` when the page is served by the backend, otherwise http://localhost:8000/.
   Other address: `?monitor=http://...`.
 
 ## What is real

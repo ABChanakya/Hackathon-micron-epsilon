@@ -4,7 +4,7 @@ from collections import deque
 from concurrent.futures import Future
 from datetime import datetime
 
-from sources import ERR_BASE, MedaqSource, ReplaySource, SerialSource, SimSource, ThermoSource
+from sources import ERR_BASE, MedaqSource, ReplaySource, SerialSource, SimSource, ThermoSource, probe_port, serial_ports
 
 REC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
 FRAME_S = 0.04          # UI frame interval (25 fps) - decimation: raw kHz stream never reaches the browser
@@ -91,6 +91,17 @@ class Hub:
     def _connect(self, cfg):
         self._disconnect()
         name = cfg.get("sensor", "SIM")
+        if name.upper() == "AUTO":          # find the sensor: probe every USB serial port (or the given one), read-only
+            found = None
+            for port in ([cfg["port"]] if cfg.get("port") else serial_ports()):
+                found = probe_port(port)
+                if found:
+                    break
+            if not found:
+                self.status, self.error = "error", "no sensor found on any USB serial port"
+                raise RuntimeError(self.error)
+            cfg = {**cfg, "sensor": found["sensor"], "port": found["port"]}
+            name = found["sensor"]
         if name == "SIM":
             self.src = SimSource()
         elif name == "REPLAY":

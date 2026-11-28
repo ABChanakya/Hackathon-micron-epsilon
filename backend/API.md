@@ -1,15 +1,16 @@
 # Sensor backend API
 
-Base URL: `http://localhost:8000`. Run `uvicorn app:app --port 8000` in `backend/`.
-The backend also serves the monitor from `frontend/dist/`, so the UI and the API share one origin and CORS is not needed.
-The legacy API test page is at `/diagnostics/` (and at `/` when the frontend checkout is absent).
+Base URL: `http://localhost:8000`. Start with `./start.sh` in the repository root (or `uvicorn app:app --port 8000` in `backend/`).
+The same server serves the monitor at `/` (from `frontend/dist/`), the pitch landing page at `/pitch/` and the legacy API
+test page at `/diagnostics/` (also at `/` when the frontend checkout is absent), so pages and API share one origin.
 Starting the server leaves the source disconnected; only `POST /api/connect` selects or changes a source.
 All bodies are JSON. Errors come back as HTTP 400 `{"detail": "<message>"}`, with 404 or 409 where noted.
 
 ## Concepts
 - One source at a time:
   - `SIM`: a built-in simulator.
-  - `ILD-serial` (or `ILD1420-serial`): the real sensor over USB serial. The model is read from the sensor.
+  - `AUTO`: probe the USB serial ports (read-only) and connect the first sensor that answers (optoNCDT or thermoMETER).
+  - `ILD-serial` (`ILD1420-serial` also accepted): an optoNCDT over USB serial. The model is read from the sensor.
     Verified on an ILD1420-50 and an ILD1900-10, and it works on macOS.
   - `REPLAY`: plays back a recording.
   - MEDAQLib sensor names: Windows/Linux only, untested.
@@ -41,7 +42,7 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 |---|---|---|---|
 | `GET /api/status` | – | State | Connection, recording and tare state |
 | `GET /api/latest` | – | frame \| null | The most recent live frame (same fields as the WebSocket). For scripts and polling |
-| `GET /api/sensors/scan` | – | list | Simulator, USB serial ports (not probed) and recordings (as `REPLAY` entries) |
+| `GET /api/sensors/scan?probe=true` | – | list | Simulator, USB serial ports and recordings (as `REPLAY`). With `probe=true` each free port is asked (read-only) which sensor it has; without it ports are unverified candidates |
 | `POST /api/connect` | see below | State | Open a source (closes the previous one) |
 | `POST /api/disconnect` | – | State | Close it. Stops any recording; a real sensor gets its settings back |
 | `GET /api/settings` | – | settings | Current settings and the allowed `options` |
@@ -60,19 +61,21 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 ### `POST /api/connect`
 | Field | Example | Notes |
 |---|---|---|
-| `sensor` | `"SIM"`, `"ILD-serial"`, `"thermo"`, `"REPLAY"`, `"ILD1420"` | Source type |
-| `port` | `"/dev/cu.usbserial-000101"`, `"COM25"` | Serial. `ILD1420-serial` defaults to 921600 baud |
+| `sensor` | `"AUTO"`, `"ILD-serial"`, `"thermo"`, `"SIM"`, `"REPLAY"`, `"ILD1420"` | Source type. `AUTO` asks each USB serial port (read-only) and connects the first optoNCDT or thermoMETER that answers |
+| `port` | `"/dev/cu.usbserial-000101"`, `"COM25"` | Serial port (optional for `AUTO`) |
 | `channels` | `["COUNTER","INTENSITY","STATE","TIMESTAMP","SHUTTER"]` | Extra values per sample (default: all) |
 | `file` | `"rec_20261127_181128.csv"` | `REPLAY` only |
 | `speed`, `loop` | `1.0`, `true` | `REPLAY` only |
-| `restore_output` | `"ANALOG"` | `ILD1420-serial`: OUTPUT mode to set on disconnect |
+| `restore_output` | `"ANALOG"` | `ILD-serial`: OUTPUT mode to set on disconnect |
 | `address` | `126` | `thermo` ME-Bus address |
-| `baudrate` | `921600` or `115200` | Serial baud rate; defaults depend on source |
+| `baudrate` | `921600` or `115200` | Serial baud rate; defaults: `ILD-serial` 921600 (8N1), `thermo` 115200 (8E1) |
 | `interface`, `ip` | | MEDAQLib sensors only |
 
 ```json
 {"sensor": "SIM"}
-{"sensor": "ILD1420-serial", "port": "/dev/cu.usbserial-000101"}
+{"sensor": "AUTO"}
+{"sensor": "ILD-serial", "port": "/dev/cu.usbserial-000101"}
+{"sensor": "thermo", "port": "/dev/cu.usbserial-FTA3RQ8E"}
 {"sensor": "REPLAY", "file": "rec_20261127_181128.csv", "speed": 1, "loop": true}
 ```
 
@@ -93,7 +96,7 @@ For `REPLAY`, `info` is the recorded sensor's info plus `replay_of`, `label` and
 - A real sensor pauses its stream for about 0.5 s while settings change. This is not counted as dropped data.
 - Settings are read at connect and then tracked; changes made in sensorTOOL during a session are not seen. They are
   not saved on the sensor, so it reverts after a power cycle. The backend restores `OUTPUT` and `OUTADD_RS422` on disconnect and on server stop.
-- `ILD1420-serial` also returns `order` (the sensor's frame layout) and `raw` (all sensor settings).
+- `ILD-serial` also returns `order` (the sensor's frame layout) and `raw` (all sensor settings).
 
 ## WebSocket `/ws/stream`
 Server → client only, about 25 frames/s while streaming:

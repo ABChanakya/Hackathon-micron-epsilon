@@ -1,13 +1,15 @@
 # Sensor backend
 
-FastAPI service between a Micro-Epsilon ILD1420/ILD1900 sensor or thermoMETER UC (or a simulator, or a recording) and the web UI.
+FastAPI service between the sensors (optoNCDT ILD1900 / ILD1420, thermoMETER UC, a simulator or a recording) and the
+web pages. It serves the monitor (`/`), the pitch landing page (`/pitch/`) and a diagnostic page (`/diagnostics/`).
 The API contract is in [API.md](API.md).
 
 ## Run
+From the repository root: `./start.sh` (see the main README). By hand:
 ```
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app:app --port 8000
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 Open http://localhost:8000. The backend serves the monitor from `../frontend/dist/`, so the dashboard, API and WebSocket
 share one origin. The static paths work independently of the server's working directory.
@@ -15,13 +17,13 @@ The server starts disconnected and does not select or reconfigure a sensor autom
 The old API test page remains available at http://localhost:8000/diagnostics/; its source controls are explicit actions.
 For a backend-only checkout without `frontend/dist/index.html`, that test page is also used as the home page.
 
-Connect the real sensor (macOS port name shown; on Linux it is `/dev/ttyUSB0`):
+Connect whatever sensor is plugged in (each USB serial port is asked, read-only, what answers):
 ```
-curl -X POST localhost:8000/api/connect -H 'content-type: application/json' \
-     -d '{"sensor":"ILD1420-serial","port":"/dev/cu.usbserial-000101"}'
+curl -X POST localhost:8000/api/connect -H 'content-type: application/json' -d '{"sensor":"AUTO"}'
 ```
-The same serial source detects an ILD1900 automatically. Use `GET /api/sensors/scan` to find the actual USB port;
-the port above is an example. `pyserial` is included in `requirements.txt`.
+The same serial source detects an ILD1900 automatically. Use `GET /api/sensors/scan?probe=true` to see which sensor is on
+which USB port (read-only), or connect with `{"sensor":"AUTO"}` to take the first one that answers. The port above is an
+example (Linux: `/dev/ttyUSB0`). `pyserial` is included in `requirements.txt`.
 While connected the sensor streams over RS422 and its 4-20 mA analog output is off. Disconnecting, or stopping the server
 with Ctrl+C, switches it back. If the server is killed hard (`kill -9`), reconnect and disconnect once to restore it.
 
@@ -30,7 +32,7 @@ Connect the thermoMETER UC infrared thermometer (3.3 V TTL USB cable):
 curl -X POST localhost:8000/api/connect -H 'content-type: application/json' \
      -d '{"sensor":"thermo","port":"/dev/cu.usbserial-FTA3RQ8E"}'
 ```
-It streams °C at about 55 readings per second; the monitor website switches to °C by itself when it connects.
+(`AUTO` finds it as well.) It streams °C at about 55 readings per second; the monitor website switches to °C by itself when it connects.
 
 ## Record several materials in one go (guided)
 ```

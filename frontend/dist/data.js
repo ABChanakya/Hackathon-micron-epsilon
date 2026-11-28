@@ -1,7 +1,7 @@
 // The sensors this monitor knows. The active one is chosen from the project backend's /api/status when connecting.
 export const SENSORS = Object.freeze({
   ild1900: Object.freeze({
-    id: 'ild1900', kind: 'distance', family: 'ild1900', codes: ['ild190010', 'optoncdt190010', '190010'],
+    id: 'ild1900', kind: 'distance', family: 'ild1900', codes: ['ild190010', 'optoncdt190010', '190010', 'simild190010'],   // simild190010: the backend simulator
     model: 'optoNCDT 1900-10', rangeStart: 20, rangeEnd: 30, range: 10, midpoint: 25,
     unit: 'mm', decimals: 3, quantity: 'Abstand',
     rates: [250, 500, 1000, 2000, 4000, 8000, 10000], interface: 'RS422 · IF2001/USB',
@@ -43,7 +43,7 @@ export function sensorFromStatus(status) {
   const info = status?.info;
   if (!info) return null;
   const code = sensorCode(info.model);
-  if (info.unit === 'mm' && ['ild190010', 'optoncdt190010', 'ild1900'].includes(code) &&
+  if (info.unit === 'mm' && ['ild190010', 'optoncdt190010', 'ild1900', 'simild190010'].includes(code) &&
       info.range_mm === SENSORS.ild1900.range && info.smr_mm === SENSORS.ild1900.rangeStart) return 'ild1900';
   if (info.unit === '°C' && code.startsWith('ucsf')) return 'thermo_uc';
   return null;

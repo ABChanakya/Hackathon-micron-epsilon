@@ -264,6 +264,11 @@ test('only live backend status for the 10 mm ILD1900 can identify the input sens
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, smr_mm: 25 } }), false);
   assert.equal(engine.matchesBackendSensor({ ...status, info: { ...status.info, unit: 'inch' } }), false);
   assert.equal(engine.matchesBackendSensor({ ...status, source: 'replay' }), true);
+  // the backend simulator imitates this sensor
+  assert.equal(engine.sensorFromStatus({ status: 'streaming', source: 'sim', info: { model: 'SIM-ILD1900-10', range_mm: 10, smr_mm: 20, unit: 'mm' } }), 'ild1900');
+  const simFrame = { status: 'streaming', source: 'sim', n: 40, value: 5.0, dist_from_face_mm: 25.0, unit: 'mm', current_valid: true,
+    info: { model: 'SIM-ILD1900-10', range_mm: 10, smr_mm: 20, unit: 'mm' } };
+  assert.equal(engine.parseBridgeSample(simFrame, true).value, 25.0);
 });
 
 test('native frames verify their current model and range without trusting a previous source', () => {
