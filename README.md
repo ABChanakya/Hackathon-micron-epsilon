@@ -167,6 +167,83 @@ der Sensor erhält dabei seine ursprünglichen Ausgabeeinstellungen zurück.
 Die separate Diagnoseansicht liegt unter http://127.0.0.1:8000/diagnostics/.
 Die neue Präsentationsseite erreichst du unter http://127.0.0.1:8000/pitch/.
 
+## Einrichtung des Messplatzes
+
+Nach der Installation: Sensor anschließen und ausrichten, dann im Cockpit Messprofil, Alarm und KI einstellen.
+Ohne Sensor kannst du Schritt 1 und 2 überspringen und mit **Echte Aufnahmen abspielen** üben.
+
+### 1. Sensor anschließen
+
+**optoNCDT ILD1900 (und ILD1420) über den RS422-USB-Konverter IF2001/USB.** Die Adern des Sensorkabels
+(ILD1900: PC1900-x/OE, ILD1420: PCF1420-x/I) kommen an die Klemmleisten des Konverters, laut
+[Montageanleitung IF2001/USB](productinformation/Operating%20instructions/Setup%20Guides/set--IF2001-USB--de.pdf):
+
+| Klemme am IF2001/USB | Ader ILD1900 | Ader ILD1420 | Wozu |
+|---|---|---|---|
+| 24 VDC | rot | rot | Versorgung, Netzteil 24 V DC (z. B. PS2020); der ILD1900 verträgt 11 bis 30 V DC |
+| GND | blau | blau | Masse |
+| Laser ON | schwarz | schwarz | **mit GND verbinden**, sonst bleibt der Laser aus |
+| Multifunction | violett | violett | nicht nötig für diesen Messplatz |
+| Switch 1 / Switch 2 | braun / weiß | braun / – | Schaltausgänge, nicht nötig |
+| Rx− / Rx+ | rosa / grau | rosa / grau | RS422 Empfang |
+| Tx− / Tx+ | gelb / grün | gelb / grün | RS422 Senden |
+
+1. Erst verdrahten, dann das Netzteil einschalten. Das Netzteil nur für Messgeräte verwenden, nicht für Motoren.
+2. Konverter per USB an den Rechner. macOS und Linux bringen den Treiber mit (Anschluss `/dev/cu.usbserial-…`
+   bzw. `/dev/ttyUSB0`). Windows braucht einmal den
+   [FTDI-VCP-Treiber](https://www.micro-epsilon.de/fileadmin/download/software/FTDI_VCP_Driver.zip); danach erscheint
+   ein COM-Anschluss.
+3. Nach dem Einschalten leuchten am Sensor kurz alle LEDs (Start, höchstens 3 s). Bleibt die LED **Output** aus,
+   fehlt die Versorgung.
+
+**thermoMETER UC.** Das Digitalkabel mit USB-Stecker (8-polig M12, Art.-Nr. 2904053) an die 8-polige M12-Buchse am
+Controller und an den Rechner. Das Sensorkabel nicht kürzen, nicht knicken (Biegeradius mindestens 22 mm) und während
+der Messung nicht bewegen ([Montageanleitung](productinformation/Operating%20instructions/Setup%20Guides/set--thermoMETER-UC--de.pdf)).
+
+### 2. Sensor ausrichten
+
+| Sensor | Abstand vom Sensor zum Messobjekt | Tipp |
+|---|---|---|
+| ILD1900-10 | 20 bis 30 mm, Mitte 25 mm | Messobjekt auf etwa 25 mm legen; das Cockpit zeigt die Abweichung zum Sollwert |
+| ILD1420-50 | 35 bis 85 mm | Sensor von einem Bücherstapel aus auf den Tisch richten |
+| thermoMETER UC | je nach Optik | Messfleck muss ganz auf dem Objekt liegen |
+
+- Der Laser ist Klasse 2: **nicht in den Strahl schauen** und ihn nicht auf Personen richten.
+- Für wiederholbare Messungen braucht der ILD1900 etwa **20 Minuten Einlaufzeit** nach dem Einschalten.
+- Den Sensor fest montieren (der ILD1900 hat zwei Durchgangsbohrungen im Abstand von 60 mm). Wackelt er, misst er
+  das Wackeln.
+
+### 3. Im Cockpit einrichten
+
+1. **Verbinden:** `./start.sh`, http://127.0.0.1:8000/ öffnen, **Sensor verbinden**. Steht der Wert im Feld und das
+   3D-Modell zeigt die LED **State** grün, misst der Sensor im Messbereich. Gelb heißt Messbereichsmitte, rot kein
+   gültiger Wert (Objekt zu nah, zu weit oder zu dunkel).
+2. **Messprofil festlegen:** **Einstellungen** (Zahnrad oben rechts) → Abschnitt **Messprofil** → **Profil
+   bearbeiten**. Trage **Sollwert**, **Untere** und **Obere Sollgrenze** ein (z. B. 25,000 mm mit 24,950 und
+   25,050 mm) und speichere. Im Cockpit wechselst du gespeicherte Profile über die Profilauswahl.
+   Werte außerhalb der Grenzen werden rot und landen in „Erkannte Fehler“.
+3. **Alarmton einschalten:** unten in „Erkannte Fehler“ auf **Ton aus** klicken (wird zu **Ton an**), dann
+   **Ton testen**. Wähle, ob einmal gepiept oder bis zum stabilen Wert wiederholt wird.
+4. **KI anlernen:** Nach dem Verbinden lernt die KI etwa 10 Sekunden, wie das Signal normal aussieht; lass das
+   Messobjekt in dieser Zeit ruhig liegen. Für den ILD1900 ist ein fertig trainiertes Modell dabei (schwarzes Metall
+   gilt als Anomalie). Meldet die KI etwas, antworte mit **In Ordnung** oder **Nicht in Ordnung**; das bringt ihr bei,
+   was bei dir normal ist. Feineinstellungen: **Einstellungen → KI-Anomalieerkennung** (siehe
+   [KI-Anomalieerkennung](#ki-anomalieerkennung)).
+5. **Eigene Materialien beibringen (optional):** mit **Aufnahme starten** je Material 10 bis 30 Sekunden aufnehmen
+   und dabei die Klasse wählen, oder geführt mit `cd backend && .venv/bin/python record_materials.py`. Unter
+   Einstellungen lässt sich jede Aufnahme **Als normal lernen** oder **Als Anomalie lernen**.
+6. **Für Vorträge:** **Aa** oben rechts schaltet die Saalansicht ein (große Schrift für Beamer).
+7. **Handy dazunehmen (optional):** siehe [Handy verbinden](#handy-verbinden-optional).
+8. **Sprachassistent (optional):** siehe [Lokaler Sprachassistent](#lokaler-sprachassistent).
+
+### Fertig, wenn …
+
+- [ ] das Cockpit einen Messwert zeigt und die LED **State** grün ist,
+- [ ] ein Gegenstand, der aus dem Sollbereich ragt, rot markiert wird und (mit **Ton an**) piept,
+- [ ] die KI nach der Lernphase keine Meldung zeigt, solange das Messobjekt ruhig liegt,
+- [ ] beim Beenden mit **Strg+C** der Sensor seine ursprünglichen Einstellungen zurückbekommt (sein analoger Ausgang
+  läuft wieder).
+
 ## Sensoren
 
 | Sensor | Misst | Anschluss | Stand |
