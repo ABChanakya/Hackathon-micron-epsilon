@@ -1,4 +1,4 @@
-# Micro-Epsilon · Sensor Monitor
+# Micro-Epsilon · Sensor Cockpit
 
 Browser-Messplatz für den optoNCDT 1900-10 und thermoMETER UC. Die Sensorverbindung schaltet Einheit, Messbereich und Profile automatisch zwischen mm und °C um. Aufzeichnungen behalten beim Sensorwechsel ihre eigene Einheit. Der Sensor erfasst Abstände von 20 bis 30 mm ab Sensorfront. Laufende Messungen lassen sich mit Zeitmarken aufzeichnen, vergleichen und als CSV oder PDF exportieren.
 
@@ -18,7 +18,13 @@ HTML, CSS, JavaScript, Schriften und Bibliotheken liegen in `dist/`. Für eine r
 
 ## Datenquelle
 
-Standardmäßig wird die Live-Verbindung geprüft. Die Demo wird ausdrücklich über die Datenquellenauswahl aktiviert und zeigt fünf simulierte Werte pro Sekunde. Die Profilrate beschreibt die vorgesehene Sensoreinstellung. Der Sensor bietet sieben feste Messraten von 250 Hz bis 10 kHz. Aufzeichnungen und Profile liegen im Browser. Wiedergaben bleiben auch in neu erstellten Aufnahmen und Exporten als Wiedergabe gekennzeichnet.
+Standardmäßig wird die Live-Verbindung geprüft. Die Demo wird ausdrücklich über **Einstellungen → Datenquelle** aktiviert und zeigt fünf simulierte Werte pro Sekunde. Die Profilrate beschreibt die vorgesehene Sensoreinstellung. Der Sensor bietet sieben feste Messraten von 250 Hz bis 10 kHz. Aufzeichnungen und Profile liegen im Browser. Wiedergaben bleiben auch in neu erstellten Aufnahmen und Exporten als Wiedergabe gekennzeichnet.
+
+## Einstellungen und Sprache
+
+Das Zahnrad oben rechts öffnet Datenquelle, Sprache, Farbschema, Messprofil und Hilfe. Das Micro-Epsilon-Logo oben links führt zur Hauptseite zurück.
+
+Die Sprachwahl gilt für Cockpit, Aufzeichnungen, Einrichtung, Dialoge und Hauptseite. Unterstützt werden Deutsch, Englisch, Französisch, Spanisch, Italienisch, Tschechisch, Chinesisch, Japanisch, Koreanisch und Pirate. Die Auswahl wird in diesem Browser gespeichert und mit der Hauptseite geteilt. Eigene Profilnamen, Aufnahmen und Notizen bleiben unverändert.
 
 ### Messbrücke
 
@@ -39,6 +45,14 @@ Die Messbrücke sendet den absoluten Abstand ab Sensorfront:
 `value` liegt im Bereich 20–30 mm. Die optionalen LED-Felder verstehen `green`, `yellow`, `red`, `off` und `unknown`.
 
 Das Projekt-Backend kann über `ws://localhost:8000/ws/stream` angebunden werden, wenn der Browser auch dessen `/api/status` lesen kann. Dort prüft der Monitor Modell und Messbereich. Verwende bei einem lokalen Aufbau denselben Ursprung oder einen dafür konfigurierten Proxy. Der Monitor liest `dist_from_face_mm`, also den Abstand ab Sensorfront ohne Nullpunktverschiebung.
+
+## Assistentenvorschau
+
+Der Assistent in der Kopfzeile öffnet eine Vorschau mit Fragen, Fehlererklärungen, Diagrammzusammenfassungen und Parameterbefehlen. Am Cockpit-Diagramm und an Sensorhinweisen gibt es direkte Einstiege. Die Vorschau berücksichtigt alle zehn Oberflächensprachen.
+
+`dist/assistant.js` stellt die vier asynchronen Funktionen `askQuestion`, `explainError`, `explainChart` und `parseParameterCommand` bereit. Aktuell liefern sie lokale Beispielantworten ohne Netzwerkzugriff. `dist/assistant-ui.js` erhält aktuelle Sensor-, Profil- und Diagrammdaten über drei Callback-Funktionen. Die Diagrammfunktion steht im Cockpit zur Verfügung und erklärt dessen sichtbaren Zeitraum.
+
+Parameterbefehle erzeugen einen Vorschlag. Bestätigen und Verwerfen sind vollständig durchspielbar; auch eine Bestätigung verändert weder Profil noch Hardware. Vor der Bestätigung werden Sensor, Einheit, Profilversion und bisheriger Wert erneut geprüft. Für die spätere Backend-Anbindung kann der Mock-Client ersetzt werden, ohne den Drawer umzubauen.
 
 ## Tests
 
